@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Provider Portal - Contraception DSS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <div class="dash-layout">
+        <aside class="dash-sidebar">
+            <div class="sidebar-header">
+                <h2 id="user-name">Loading...</h2>
+                <p id="user-role" style="font-size: 0.75rem; margin:0; text-transform: uppercase;">...</p>
+            </div>
+            <nav class="sidebar-nav" id="sidebar-nav">
+                <!-- Dynamic elements injected here -->
+            </nav>
+        </aside>
+
+        <main class="dash-main">
+            <div class="topbar">
+                <h2 id="view-title">Dashboard</h2>
+                <button class="btn btn-secondary" onclick="logout()">Log Out</button>
+            </div>
+
+            <div id="alert-box" class="alert" style="display: none; margin-bottom: 2rem;"></div>
+
+            <!-- Role: CHW - Client Roster -->
+            <section id="view-chw-roster" class="content-section" style="display: none;">
+                <button class="btn btn-primary" style="margin-bottom: 1.5rem;" onclick="showSection('chw-triage')">+
+                    Start Assisted Triage</button>
+                <div class="table-container">
+                    <div style="padding: 1rem; border-bottom: 1px solid var(--border);">
+                        <h3 style="margin:0;">My Registered Clients</h3>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Phone Number</th>
+                                <th>Onboard Date</th>
+                                <th>Matched Method</th>
+                                <th>Status (Side Effects)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="chw-roster-table">
+                            <tr>
+                                <td colspan="4" class="text-center">Loading clients...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Role: CHW - Assisted Triage -->
+            <section id="view-chw-triage" class="content-section" style="display: none;">
+                <div class="card" style="max-width: 800px; margin: 0 auto;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <h3>Assisted Method Match</h3>
+                        <button class="btn btn-secondary" style="padding: 0.5rem 1rem;"
+                            onclick="toggleTranslation()">Translate (EN/SW)</button>
+                    </div>
+                    <p>Sit with the client and read the prompt below in their preferred language.</p>
+                    <div
+                        style="background: #f1f5f9; padding: 1.5rem; border-radius: var(--radius); margin-bottom: 2rem;">
+                        <h4 style="color: var(--primary);" id="triage-prompt-en">1. How old are you?</h4>
+                        <p style="color: var(--text-muted); font-style: italic; display: none;" id="triage-prompt-sw">1.
+                            Una umri wa miaka mingapi?</p>
+                    </div>
+                    <!-- Mock input for the demo -->
+                    <input type="text" placeholder="Type client's response..." style="margin-bottom: 1rem;">
+                    <button class="btn btn-primary btn-block">Next Question</button>
+                </div>
+            </section>
+
+            <!-- Role: Clinician - MEC Engine -->
+            <section id="view-clinician-mec" class="content-section" style="display: none;">
+                <div class="card" style="max-width: 800px; margin: 0 auto;">
+                    <h3>Advanced Medical Eligibility (MEC) Query</h3>
+                    <p>Directly search WHO and National Guidelines by typing patient characteristics.</p>
+
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <textarea id="mec-query" rows="4"
+                            placeholder="e.g. 30 year old female, smokes 15 cigarettes a day, requests combined oral contraceptives."></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="queryMEC()" id="btn-mec">Analyze Eligibility</button>
+
+                    <div id="mec-result"
+                        style="margin-top: 2rem; display: none; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: #f8fafc;">
+                        <h4 style="color: var(--danger);">Category 4 (Unacceptable Risk)</h4>
+                        <p><strong>Condition:</strong> Smoking (≥ 15 cigarettes/day) & Age ≥ 35
+                            <br><strong>Method:</strong> COC
+                        </p>
+                        <p style="font-size: 0.875rem;"><em>Source: WHO MEC 6th Edition (2025) Pg. 45</em></p>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        let currentProvider = null;
+        let isSwahili = false;
+
+        async function init() {
+            try {
+                const res = await fetch('/api/provider/me');
+                if (!res.ok) throw new Error('Not logged in');
+                currentProvider = await res.json();
+
+                document.getElementById('user-name').textContent = currentProvider.fullName;
+                document.getElementById('user-role').textContent = currentProvider.role === 'chw' ? 'Community Health Worker' : 'Clinician';
+
+                setupSidebar();
+                if (currentProvider.role === 'chw') showSection('chw-roster');
+                else showSection('clinician-mec');
+            } catch (e) {
+                window.location.href = '/provider/login';
+            }
+        }
+
+        function setupSidebar() {
+            const nav = document.getElementById('sidebar-nav');
+            if (currentProvider.role === 'chw') {
+                nav.innerHTML = `
+                <a href="#" class="nav-item active" onclick="showSection('chw-roster')">Client Roster</a>
+                <a href="#" class="nav-item" onclick="showSection('chw-triage')">Assisted Triage</a>
+            `;
+            } else {
+                nav.innerHTML = `
+                <a href="#" class="nav-item active" onclick="showSection('clinician-mec')">MEC Direct Engine</a>
+            `;
+            }
+        }
+
+        function showSection(sectionId) {
+            document.querySelectorAll('.content-section').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+            const targetSection = document.getElementById('view-' + sectionId);
+            if (targetSection) targetSection.style.display = 'block';
+
+            // Highlight nav
+            document.querySelectorAll('.nav-item').forEach(nav => {
+                if (nav.getAttribute('onclick').includes(sectionId)) nav.classList.add('active');
+            });
+
+            switch (sectionId) {
+                case 'chw-roster':
+                    document.getElementById('view-title').textContent = "My Roster";
+                    loadRoster();
+                    break;
+                case 'chw-triage': document.getElementById('view-title').textContent = "Assisted Method Match"; break;
+                case 'clinician-mec': document.getElementById('view-title').textContent = "Clinical MEC Engine"; break;
+            }
+        }
+
+        async function loadRoster() {
+            try {
+                const res = await fetch('/api/provider/roster');
+                const data = await res.json();
+                const tbody = document.getElementById('chw-roster-table');
+                tbody.innerHTML = '';
+
+                if (data.clients.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center">No clients onboarded yet.</td></tr>';
+                    return;
+                }
+
+                data.clients.forEach(c => {
+                    const tr = document.createElement('tr');
+                    const hasSideEffects = c.side_effects && c.side_effects.length > 0;
+                    tr.innerHTML = `
+                        <td><strong>${c.id}</strong></td>
+                        <td>${c.registered_at ? new Date(c.registered_at).toLocaleDateString() : 'N/A'}</td>
+                        <td><span class="badge ${c.matched_method ? 'badge-clinician' : 'badge-pending'}">${c.matched_method ? 'Matched' : 'Incomplete'}</span></td>
+                        <td>
+                            ${hasSideEffects ? '<span class="badge badge-chw" style="background:#fee2e2; color:#b91c1c;">Alert</span>' : '<span style="color:var(--success)">Normal</span>'}
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error('Failed to load roster');
+            }
+        }
+
+        function toggleTranslation() {
+            isSwahili = !isSwahili;
+            document.getElementById('triage-prompt-sw').style.display = isSwahili ? 'block' : 'none';
+            document.getElementById('triage-prompt-en').style.display = isSwahili ? 'none' : 'block';
+        }
+
+        async function queryMEC() {
+            const query = document.getElementById('mec-query').value;
+            const btn = document.getElementById('btn-mec');
+            const resBox = document.getElementById('mec-result');
+
+            if (!query) return;
+
+            btn.textContent = 'Analyzing...';
+            btn.disabled = true;
+
+            // This hits the RAG backend
+            try {
+                const res = await fetch('/api/provider/mec_query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                const data = await res.json();
+
+                resBox.style.display = 'block';
+                resBox.innerHTML = `
+                <h4 style="color: var(--primary);">MEC Analysis</h4>
+                <p style="white-space: pre-wrap;">${data.response}</p>
+            `;
+            } catch (e) {
+                alert('Failed to run MEC query.');
+            } finally {
+                btn.textContent = 'Analyze Eligibility';
+                btn.disabled = false;
+            }
+        }
+
+        async function logout() {
+            await fetch('/api/provider/logout', { method: 'POST' });
+            window.location.href = '/provider/login';
+        }
+
+        init();
+    </script>
+
+</body>
+
+</html>

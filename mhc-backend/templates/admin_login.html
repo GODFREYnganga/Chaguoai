@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Contraception DSS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+    <div class="auth-wrapper">
+        <div class="card">
+            <div class="brand-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <h1>Admin Command Center</h1>
+                <p>Enter your secure access code to manage the DSS.</p>
+            </div>
+
+            <div id="alert-box" class="alert" style="display: none;"></div>
+
+            <form id="admin-login-form">
+                <div class="form-group">
+                    <label>Secure Access Code</label>
+                    <input type="password" id="access_code" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Unlock Dashboard</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('admin-login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code = document.getElementById('access_code').value;
+            const alertBox = document.getElementById('alert-box');
+
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ access_code: code })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    window.location.href = '/admin/portal';
+                } else {
+                    alertBox.textContent = data.error || 'Access Denied';
+                    alertBox.className = 'alert alert-error';
+                    alertBox.style.display = 'block';
+                }
+            } catch (err) {
+                alertBox.textContent = 'System connection failed.';
+                alertBox.className = 'alert alert-error';
+                alertBox.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MHC Hospital Dashboard</title>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .alert-card { background: #fff; border-left: 5px solid #e74c3c; padding: 15px; margin-top: 20px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .severity-high { color: #e74c3c; font-weight: bold; }
+        .status-badge { background: #eee; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; }
+        .btn { background: #27ae60; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>MHC Emergency Dashboard</h1>
+            <div>Facility: <span id="facility-name">Wajir County Referral</span></div>
+        </div>
+        
+        <div id="alerts-container">
+            <!-- Alert Sample -->
+            <div class="alert-card">
+                <div style="display: flex; justify-content: space-between;">
+                    <span class="severity-high">CRITICAL ALERT</span>
+                    <span class="status-badge">PENDING</span>
+                </div>
+                <p><strong>Patient:</strong> [De-identified ID: 8821]</p>
+                <p><strong>Signs:</strong> Heavy Bleeding, Severe Headache</p>
+                <p><strong>Location:</strong> Near Habaswein (Estimated)</p>
+                <button class="btn">Confirm Dispatch</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
