@@ -25,18 +25,35 @@ def index():
     return "Contraception DSS Backend is running. Access /admin or /provider for dashboards."
 
 try:
-    # Because you already have GOOGLE_APPLICATION_CREDENTIALS in your .env (for Gemini),
-    # Firebase automatically inherits these exact credentials to access Firestore.
-    # No secondary JSON is needed!
     bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET")
-    if bucket_name:
-        initialize_app(options={'storageBucket': bucket_name})
+    creds_val = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    
+    # Render/Cloud Friendly: Check if creds_val is a JSON string or a file path
+    if creds_val and creds_val.strip().startswith('{'):
+        # It's a raw JSON string! Let's load it directly
+        creds_dict = json.loads(creds_val)
+        firebase_creds = credentials.Certificate(creds_dict)
+        if bucket_name:
+            initialize_app(firebase_creds, {'storageBucket': bucket_name})
+        else:
+            initialize_app(firebase_creds)
+    elif creds_val and os.path.exists(creds_val):
+        # Local testing: It's a file path
+        firebase_creds = credentials.Certificate(creds_val)
+        if bucket_name:
+            initialize_app(firebase_creds, {'storageBucket': bucket_name})
+        else:
+            initialize_app(firebase_creds)
     else:
-        initialize_app()
+        # Fallback to default (useful for GCP environments or if creds are in the env path)
+        if bucket_name:
+            initialize_app(options={'storageBucket': bucket_name})
+        else:
+            initialize_app()
 except ValueError:
     pass # App already initialized
 except Exception as e:
-    print(f"Warning: Could not initialize firebase from GOOGLE_APPLICATION_CREDENTIALS. {e}")
+    print(f"Warning: Could not initialize firebase. {e}")
 
 db = firestore.client()
 client = genai.Client()
