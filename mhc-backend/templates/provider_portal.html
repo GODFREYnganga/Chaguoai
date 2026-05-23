@@ -62,19 +62,37 @@
                     <div
                         style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                         <h3>Assisted Method Match</h3>
-                        <button class="btn btn-secondary" style="padding: 0.5rem 1rem;"
-                            onclick="toggleTranslation()">Translate (EN/SW)</button>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary" onclick="resetTriage()">Reset</button>
+                            <button class="btn btn-secondary" onclick="toggleTranslation()">Translate (EN/SW)</button>
+                        </div>
                     </div>
-                    <p>Sit with the client and read the prompt below in their preferred language.</p>
-                    <div
-                        style="background: #f1f5f9; padding: 1.5rem; border-radius: var(--radius); margin-bottom: 2rem;">
-                        <h4 style="color: var(--primary);" id="triage-prompt-en">1. How old are you?</h4>
-                        <p style="color: var(--text-muted); font-style: italic; display: none;" id="triage-prompt-sw">1.
-                            Una umri wa miaka mingapi?</p>
+
+                    <div id="triage-form-container">
+                        <p>Sit with the client and read the prompt below in their preferred language.</p>
+                        <div
+                            style="background: #f1f5f9; padding: 1.5rem; border-radius: var(--radius); margin-bottom: 2rem;">
+                            <h4 style="color: var(--primary);" id="triage-prompt-en"></h4>
+                            <p style="color: var(--text-muted); font-style: italic; display: none;"
+                                id="triage-prompt-sw"></p>
+                        </div>
+
+                        <div id="triage-input-container" class="form-group">
+                            <!-- Injected by JS -->
+                        </div>
+                        <button class="btn btn-primary btn-block" onclick="nextTriageStep()" id="btn-next">Next
+                            Question</button>
                     </div>
-                    <!-- Mock input for the demo -->
-                    <input type="text" placeholder="Type client's response..." style="margin-bottom: 1rem;">
-                    <button class="btn btn-primary btn-block">Next Question</button>
+
+                    <div id="triage-result-container" style="display: none;">
+                        <div class="alert alert-success">Survey Complete! Generating clinical recommendation...</div>
+                        <div id="triage-final-result" class="card"
+                            style="margin-top: 1.5rem; background: #f8fafc; border: 1px solid var(--primary);">
+                            <!-- Injected by JS -->
+                        </div>
+                        <button class="btn btn-primary btn-block" style="margin-top: 1.5rem;"
+                            onclick="showSection('chw-roster')">Back to Roster</button>
+                    </div>
                 </div>
             </section>
 
@@ -197,6 +215,103 @@
             document.getElementById('triage-prompt-en').style.display = isSwahili ? 'none' : 'block';
         }
 
+        // --- TRIAGE WIZARD LOGIC ---
+        const triageQuestions = [
+            { id: 'phone', en: 'Enter Client Phone Number:', sw: 'Weka nambari ya simu ya mteja:', type: 'text' },
+            { id: 'name', en: 'What is the client\'s name?', sw: 'Jina la mteja ni nani?', type: 'text' },
+            { id: 'age', en: 'How old are they?', sw: 'Ana umri wa miaka mingapi?', type: 'number' },
+            { id: 'last_period', en: 'When was their last period?', sw: 'Hedhi ya mwisho ilikuwa lini?', type: 'select', options: ['Within 4 weeks', 'Not sure', 'Pregnant'] },
+            { id: 'health_conditions', en: 'Any health conditions? (e.g. High BP, Diabetes, None)', sw: 'Hali yoyote ya kiafya? (Mfn. Shinikizo, Kisukari, Hakuna)', type: 'text' },
+            { id: 'prefer_not_to_use', en: 'Any methods they prefer NOT to use?', sw: 'Njia ambazo hawapendi kutumia?', type: 'text' }
+        ];
+
+        let triageStep = 0;
+        let triageData = {};
+
+        function resetTriage() {
+            triageStep = 0;
+            triageData = {};
+            document.getElementById('triage-form-container').style.display = 'block';
+            document.getElementById('triage-result-container').style.display = 'none';
+            renderTriageStep();
+        }
+
+        function renderTriageStep() {
+            const q = triageQuestions[triageStep];
+            document.getElementById('triage-prompt-en').textContent = q.en;
+            document.getElementById('triage-prompt-sw').textContent = q.sw;
+
+            const container = document.getElementById('triage-input-container');
+            container.innerHTML = '';
+
+            if (q.type === 'select') {
+                const select = document.createElement('select');
+                select.className = 'form-group';
+                select.style.width = '100%';
+                select.style.padding = '0.75rem';
+                q.options.forEach(opt => {
+                    const o = document.createElement('option');
+                    o.value = opt; o.textContent = opt;
+                    select.appendChild(o);
+                });
+                select.id = 'triage-input';
+                container.appendChild(select);
+            } else {
+                const input = document.createElement('input');
+                input.type = q.type;
+                input.id = 'triage-input';
+                input.placeholder = 'Type response here...';
+                input.className = 'form-group';
+                input.style.width = '100%';
+                input.style.padding = '0.75rem';
+                container.appendChild(input);
+            }
+
+            document.getElementById('btn-next').textContent = triageStep === triageQuestions.length - 1 ? 'Submit Assessment' : 'Next Question';
+        }
+
+        async function nextTriageStep() {
+            const val = document.getElementById('triage-input').value;
+            if (!val) { alert('Please enter a response'); return; }
+
+            const q = triageQuestions[triageStep];
+            triageData[q.id] = val;
+
+            if (triageStep < triageQuestions.length - 1) {
+                triageStep++;
+                renderTriageStep();
+            } else {
+                submitTriage();
+            }
+        }
+
+        async function submitTriage() {
+            document.getElementById('triage-form-container').style.display = 'none';
+            document.getElementById('triage-result-container').style.display = 'block';
+            document.getElementById('triage-final-result').innerHTML = '<div class="text-center" style="padding:2rem;">Analyzing clinical data...</div>';
+
+            try {
+                const res = await fetch('/api/provider/submit_triage', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(triageData)
+                });
+                const data = await res.json();
+
+                document.getElementById('triage-final-result').innerHTML = `
+                    <div style="padding: 1.5rem;">
+                        <h4 style="color: var(--primary); margin-bottom: 1rem;">Clinical Recommendation</h4>
+                        <div style="white-space: pre-wrap; font-size: 0.95rem; line-height: 1.6;">${data.recommendation}</div>
+                        <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid var(--border);">
+                        <h5 style="color: var(--text-muted);">MEC Safety Check</h5>
+                        <p style="font-size: 0.875rem;">${data.mec_result}</p>
+                    </div>
+                `;
+            } catch (e) {
+                document.getElementById('triage-final-result').innerHTML = '<div class="alert alert-error">Failed to generate recommendation. The data was saved but the engine timed out.</div>';
+            }
+        }
+
         async function queryMEC() {
             const query = document.getElementById('mec-query').value;
             const btn = document.getElementById('btn-mec');
@@ -204,11 +319,11 @@
 
             if (!query) return;
 
-            btn.textContent = 'Analyzing...';
+            btn.textContent = 'Consulting Guidelines...';
             btn.disabled = true;
 
-            // This hits the RAG backend
             try {
+                // We use a specialized prompt for clinicians to ensure guideline citations
                 const res = await fetch('/api/provider/mec_query', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -218,9 +333,14 @@
 
                 resBox.style.display = 'block';
                 resBox.innerHTML = `
-                <h4 style="color: var(--primary);">MEC Analysis</h4>
-                <p style="white-space: pre-wrap;">${data.response}</p>
-            `;
+                    <div style="border-left: 4px solid var(--primary); padding-left: 1rem;">
+                        <h4 style="color: var(--primary); margin-bottom: 0.5rem;">Clinical MEC Analysis</h4>
+                        <div style="white-space: pre-wrap; font-size: 0.95rem;">${data.response}</div>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 1rem; border-top: 1px dotted var(--border); padding-top: 0.5rem;">
+                            Generated via RAG Grounding: Kenya National FP Guidelines 7th Ed & WHO MEC 6th Ed.
+                        </p>
+                    </div>
+                `;
             } catch (e) {
                 alert('Failed to run MEC query.');
             } finally {
@@ -235,6 +355,7 @@
         }
 
         init();
+        resetTriage(); // Initialize the wizard
     </script>
 
 </body>

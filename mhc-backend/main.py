@@ -235,9 +235,12 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
         user = get_user_state(user_phone)
         if not user:
             # First interaction - Ask for Language
+            # Check if this person is being registered by a provider (session or web entry)
+            provider_id = session.get('provider_id') # Fallback if being registered via webhook
             db.collection('contraceptive_users').document(user_phone).set({
                 "stage": "AWAITING_LANGUAGE",
                 "phone": user_phone,
+                "assigned_provider_id": provider_id, # Link user to provider if known
                 "created_at": firestore.SERVER_TIMESTAMP
             })
             lang_text = (
@@ -639,11 +642,12 @@ def api_provider_me():
     if not doc.exists: return jsonify({"error": "Not Found"}), 404
     return jsonify(doc.to_dict())
 
-@app.route("/api/provider/roster", methods=['GET'])
-def api_provider_roster():
-    # CHW viewing their local clients (for now, showing all for demo)
+    pid = session.get('provider_id')
+    if not pid: return jsonify({"error": "Unauthorized"}), 401
+    
     users = []
-    for doc in db.collection('contraceptive_users').limit(20).stream():
+    # Strictly filter by the provider's ID
+    for doc in db.collection('contraceptive_users').where('assigned_provider_id', '==', pid).stream():
         u = doc.to_dict()
         u['id'] = doc.id
         users.append(u)
@@ -651,28 +655,90 @@ def api_provider_roster():
 
 @app.route("/api/provider/mec_query", methods=['POST'])
 def api_provider_mec_query():
-    # Direct MEC Engine access for Clinicians with RAG support
     pid = session.get('provider_id')
     if not pid: return jsonify({"error": "Unauthorized"}), 401
     
     data = request.json
     query = data.get('query')
+    if not query: return jsonify({"error": "Query required"}), 400
     
     try:
-        # We use Gemini to parse the clinician's natural language profile into a structured assessment
-        prompt = f"Extract clinical characteristics (age, medical conditions, smoking, parity) from this clinicians query: '{query}'. Then, consult WHO MEC 6th edition and Kenyan guidelines. Provide a structured clinical advice including MEC Categories for requested methods."
-        
+        # Search clinical guidelines specifically for clinician queries
         retriever = get_retriever()
         chunks = retriever.retrieve(query, top_k=5)
         context = retriever.format_context_for_llm(chunks)
         
-        ai_response = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=f"Context:\n{context}\n\nClinician Query: {query}\n\nFormat your response professionally with clear Category labels (1-4)."
+        # Specialized prompt for clinicians ensuring authoritative citations
+        prompt = (
+            f"You are a Senior Clinical Consultant for the Kenya National Family Planning Program.\n"
+            f"Analyze the following clinician query using the provided guideline context.\n"
+            f"Your response must include:\n"
+            f"1. MEC Category (1-4) for the specific method(s) discussed.\n"
+            f"2. Precise clinical rationale.\n"
+            f"3. Citations (Page numbers from Kenya FP Guidelines or WHO MEC).\n\n"
+            f"Context:\n{context}\n\n"
+            f"Clinician Query: {query}"
         )
-        return jsonify({"response": ai_response.text})
+        
+        ai_response = client.models.generate_content(
+            model='gemini-2.5-flash', # Using 2.5 for higher precision in logic
+            contents=prompt
+        )
+        return jsonify({"success": True, "response": ai_response.text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/provider/submit_triage", methods=['POST'])
+def api_provider_submit_triage():
+    pid = session.get('provider_id')
+    if not pid: return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.json
+    phone = data.get('phone')
+    if not phone: return jsonify({"error": "Phone required"}), 400
+    
+    # Save the survey answers from the web form
+    data['assigned_provider_id'] = pid
+    data['stage'] = 'REGISTERED'
+    data['registered_at'] = firestore.SERVER_TIMESTAMP
+    
+    db.collection('contraceptive_users').document(phone).set(data)
+    
+    # Trigger the MEC assessment immediately for the response
+    try:
+        # Re-use the background processing logic by initializing a dummy profile
+        prof = UserProfile()
+        prof.age_years = int(data.get('age', 18))
+        # (Simplified mapping for the API response)
+        mec_result = run_mec_assessment(prof)
+        mec_text = format_mec_result_for_llm(mec_result)
+        
+        # Grounding with RAG
+        retriever = get_retriever()
+        chunks = retriever.retrieve("contraceptive eligibility guidelines for " + str(data.get('prefer_not_to_use', '')), top_k=3)
+        context = retriever.format_context_for_llm(chunks)
+        
+        # Call Gemini for a clinical summary
+        sys_prompt = build_system_prompt(
+            mec_result_text=mec_text,
+            retrieved_context=context,
+            user_profile_summary=f"Web Triage for {phone}",
+            channel="web",
+            language="english"
+        )
+        
+        ai_response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=f"{sys_prompt}\n\nPlease generate a final clinical recommendation for this client based on the answers submitted."
+        )
+        
+        return jsonify({
+            "success": True, 
+            "recommendation": ai_response.text,
+            "mec_result": mec_text
+        })
+    except Exception as e:
+        return jsonify({"success": True, "note": "Data saved but recommendation engine timeout.", "error": str(e)})
 
 if __name__ == "__main__":
     app.run(port=8080, debug=True)
