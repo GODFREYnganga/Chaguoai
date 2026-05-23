@@ -741,4 +741,6 @@ def api_provider_submit_triage():
         return jsonify({"success": True, "note": "Data saved but recommendation engine timeout.", "error": str(e)})
 
 if __name__ == "__main__":
-    app.run(port=8080, debug=True)
+    # For local dev: default to 8080. For Render: uses the dynamic $PORT.
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=True)
