@@ -62,53 +62,67 @@
 
             <!-- Dashboard Section -->
             <section id="dashboard" class="content-section">
+                <!-- Summary Grid -->
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <h3>Total Clients</h3>
-                        <p id="stat-clients">...</p>
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div>
+                                <h3>Total Clients</h3>
+                                <p id="stat-clients">...</p>
+                            </div>
+                            <div style="background: rgba(30, 58, 138, 0.1); padding: 0.5rem; border-radius: 8px;">📊
+                            </div>
+                        </div>
                     </div>
                     <div class="stat-card">
-                        <h3>Active CHWs</h3>
-                        <p id="stat-chws">...</p>
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div>
+                                <h3>Active Providers</h3>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <span id="stat-providers"
+                                        style="font-size: 2rem; font-weight: 600; color: var(--primary);">...</span>
+                                    <span
+                                        style="font-size: 0.75rem; color: var(--text-muted); background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">Approved</span>
+                                </div>
+                            </div>
+                            <div style="background: rgba(13, 148, 136, 0.1); padding: 0.5rem; border-radius: 8px;">🩺
+                            </div>
+                        </div>
                     </div>
                     <div class="stat-card">
-                        <h3>Active Clinicians</h3>
-                        <p id="stat-clinicians">...</p>
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div>
+                                <h3>GCP Health</h3>
+                                <p style="font-size: 2rem; color: var(--success);">Online</p>
+                            </div>
+                            <div style="background: rgba(16, 185, 129, 0.1); padding: 0.5rem; border-radius: 8px;">⚡
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Method Analytics -->
-                <div class="card" style="margin-bottom: 2rem;">
-                    <h3>Contraceptive Method Distribution</h3>
-                    <p>Current uptake across all registered clients.</p>
-                    <div id="method-chart" style="margin-top: 1.5rem;">
-                        <!-- Chart bars injected here -->
-                        Loading analytics...
+                <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 1.5rem; margin-top: 2rem;">
+                    <!-- Method Distribution Chart -->
+                    <div class="card">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                            <h3 style="margin:0;">Method Identification</h3>
+                            <span style="font-size: 0.75rem; font-weight: 600; color: var(--primary);">Clinical
+                                Distribution</span>
+                        </div>
+                        <div id="method-chart">
+                            Loading analytics...
+                        </div>
                     </div>
-                </div>
 
-                <div class="table-container">
-                    <div style="padding: 1rem; border-bottom: 1px solid var(--border);">
-                        <h3 style="margin:0;">System Summary</h3>
+                    <!-- Recent Activity Feed -->
+                    <div class="card">
+                        <h3 style="margin-bottom: 1.5rem;">Real-Time Triage Feed</h3>
+                        <div id="activity-feed" style="display: flex; flex-direction: column; gap: 1rem;">
+                            <!-- Activity Injected -->
+                            <p class="text-center">Loading feed...</p>
+                        </div>
                     </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Metric</th>
-                                <th>Value</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>GCP Region</td>
-                                <td>Africa (Multi)</td>
-                            </tr>
-                            <tr>
-                                <td>Safety Engine</td>
-                                <td>WHO MEC 6th Ed (2025)</td>
-                            </tr>
-                        </tbody>
-                    </table>
                 </div>
             </section>
 
@@ -157,38 +171,52 @@
                 const data = await res.json();
 
                 document.getElementById('stat-clients').textContent = data.total_clients || '0';
-                document.getElementById('stat-chws').textContent = data.active_chws || '0';
-                document.getElementById('stat-clinicians').textContent = data.active_clinicians || '0';
+                document.getElementById('stat-providers').textContent = (data.active_chws + data.active_clinicians) || '0';
 
-                // Render simple bar chart
+                // 1. Render Method Distribution
                 const chartBox = document.getElementById('method-chart');
                 chartBox.innerHTML = '';
-
                 const stats = data.method_stats || {};
                 const total = Object.values(stats).reduce((a, b) => a + b, 0) || 1;
 
-                Object.entries(stats).forEach(([method, count]) => {
+                Object.entries(stats).sort((a, b) => b[1] - a[1]).forEach(([method, count]) => {
                     const percent = Math.round((count / total) * 100);
                     const row = document.createElement('div');
-                    row.style.marginBottom = '1rem';
+                    row.style.marginBottom = '1.2rem';
                     row.innerHTML = `
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
-                            <span style="font-size: 0.875rem; font-weight: 500;">${method}</span>
-                            <span style="font-size: 0.875rem; color: var(--text-muted);">${count} (${percent}%)</span>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem;">
+                            <span style="font-size: 0.9rem; font-weight: 500; color: var(--text-main);">${method}</span>
+                            <span style="font-size: 0.85rem; color: var(--text-muted); font-mono;">${count} clients (${percent}%)</span>
                         </div>
-                        <div style="height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
-                            <div style="height: 100%; width: ${percent}%; background: var(--primary); transition: width 1s ease-out;"></div>
+                        <div style="height: 10px; background: rgba(30,58,138,0.05); border-radius: 5px; overflow: hidden;">
+                            <div style="height: 100%; width: ${percent}%; background: linear-gradient(90deg, var(--primary), var(--secondary)); border-radius: 5px; transition: width 1.5s cubic-bezier(0.17, 0.67, 0.83, 0.67);"></div>
                         </div>
                     `;
                     chartBox.appendChild(row);
                 });
 
-                if (Object.keys(stats).length === 0) {
-                    chartBox.innerHTML = '<p class="text-center">No method data recorded yet.</p>';
+                // 2. Render Activity Feed
+                const feedBox = document.getElementById('activity-feed');
+                feedBox.innerHTML = '';
+                if (data.recent_activity && data.recent_activity.length > 0) {
+                    data.recent_activity.forEach(act => {
+                        const div = document.createElement('div');
+                        div.style.cssText = "padding: 0.8rem; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; border-left: 4px solid var(--primary);";
+                        div.innerHTML = `
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem;">
+                                <strong style="font-size: 0.85rem; color: var(--text-main);">${act.user}</strong>
+                                <span style="font-size: 0.7rem; color: var(--text-muted);">${new Date(act.date).toLocaleDateString()}</span>
+                            </div>
+                            <p style="font-size: 0.75rem; margin:0; color: var(--text-muted); line-height:1.4;">${act.snippet}</p>
+                        `;
+                        feedBox.appendChild(div);
+                    });
+                } else {
+                    feedBox.innerHTML = '<p style="text-align:center; font-size:0.8rem; color:var(--text-muted);">No recent triage activity.</p>';
                 }
 
             } catch (e) {
-                console.error('Failed to load stats');
+                console.error('Failed to load stats', e);
             }
         }
 

@@ -33,35 +33,34 @@ try:
     bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET")
     creds_val = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     
+    print(f"[DEBUG] Starting initialization. Port: {os.environ.get('PORT', '8080')}")
+    
     # Render/Cloud Friendly: Check if creds_val is a JSON string or a file path
     if creds_val and creds_val.strip().startswith('{'):
-        # It's a raw JSON string! Let's load it directly
         creds_dict = json.loads(creds_val)
         firebase_creds = credentials.Certificate(creds_dict)
-        if bucket_name:
-            initialize_app(firebase_creds, {'storageBucket': bucket_name})
-        else:
-            initialize_app(firebase_creds)
+        initialize_app(firebase_creds, {'storageBucket': bucket_name} if bucket_name else {})
     elif creds_val and os.path.exists(creds_val):
-        # Local testing: It's a file path
         firebase_creds = credentials.Certificate(creds_val)
-        if bucket_name:
-            initialize_app(firebase_creds, {'storageBucket': bucket_name})
-        else:
-            initialize_app(firebase_creds)
+        initialize_app(firebase_creds, {'storageBucket': bucket_name} if bucket_name else {})
     else:
-        # Fallback to default (useful for GCP environments or if creds are in the env path)
-        if bucket_name:
-            initialize_app(options={'storageBucket': bucket_name})
-        else:
-            initialize_app()
+        initialize_app(options={'storageBucket': bucket_name} if bucket_name else {})
+    
+    db = firestore.client()
+    print("[DEBUG] Firebase Initialized Successfully.")
 except ValueError:
+    db = firestore.client()
     pass # App already initialized
 except Exception as e:
-    print(f"Warning: Could not initialize firebase. {e}")
+    print(f"CRITICAL Warning: Could not initialize firebase. {e}")
+    db = None # Allow app to start even if DB fails, so health check can pass
 
-db = firestore.client()
-client = genai.Client()
+try:
+    client = genai.Client()
+    print("[DEBUG] GenAI Client Initialized.")
+except Exception as e:
+    print(f"Warning: Could not initialize GenAI. {e}")
+    client = None
 
 def format_to_e164(phone, country_code="+254"):
     """Converts local phone formats (e.g. 07...) to E.164 (+254...)."""
@@ -613,19 +612,44 @@ def admin_stats():
         users = list(db.collection('contraceptive_users').stream())
         providers = list(db.collection('providers').stream())
         
-        # Calculate Method Distribution
+        # Robust Method Extraction for Analytics
         method_counts = {}
+        # Define common category keywords to look for in AI responses
+        categories = ["Implant", "IUD", "Injection", "Pill", "Condom", "Sterilization", "Patch", "Ring", "Emergency"]
+        
         for u in users:
-            m = u.to_dict().get('matched_method', 'Unmatched')
-            # Extract common names if it's long text
-            if 'Match:' in m: m = m.split('Match:')[1].split('.')[0].strip()
-            method_counts[m] = method_counts.get(m, 0) + 1
+            data = u.to_dict()
+            raw_rec = data.get('matched_method', '')
+            
+            if not raw_rec or "Unmatched" in raw_rec:
+                method_counts["Unmatched"] = method_counts.get("Unmatched", 0) + 1
+                continue
+            
+            # Simple keyword matching to categorize the long AI text
+            found = False
+            for cat in categories:
+                if cat.lower() in raw_rec.lower():
+                    method_counts[cat] = method_counts.get(cat, 0) + 1
+                    found = True
+                    break # Assign to the first prominent category found
+            
+            if not found:
+                method_counts["Other/Complex"] = method_counts.get("Other/Complex", 0) + 1
             
         stats = {
             "total_clients": len(users),
             "active_chws": len([p for p in providers if p.to_dict().get('role') == 'chw' and p.to_dict().get('status') == 'approved']),
             "active_clinicians": len([p for p in providers if p.to_dict().get('role') == 'clinician' and p.to_dict().get('status') == 'approved']),
-            "method_stats": method_counts
+            "method_stats": method_counts,
+            # Add recent activity highlights
+            "recent_activity": [
+                {
+                    "user": u.to_dict().get("name", "Unknown"),
+                    "phone": u.id,
+                    "date": u.to_dict().get("registered_at", ""),
+                    "snippet": u.to_dict().get("matched_method", "")[:80] + "..."
+                } for u in sorted(users, key=lambda x: str(x.to_dict().get("registered_at", "")), reverse=True)[:5]
+            ]
         }
         return jsonify(stats)
     except Exception as e:

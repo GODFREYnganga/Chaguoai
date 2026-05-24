@@ -473,6 +473,25 @@
             finally { btn.disabled = false; btn.textContent = 'Ask AI Assistant'; }
         }
 
+        async function queryMEC() {
+            const q = document.getElementById('mec-query').value;
+            if (!q) return;
+            const btn = document.getElementById('btn-mec');
+            const resBox = document.getElementById('mec-result');
+            btn.disabled = true; btn.textContent = 'Analyzing Guidelines...';
+            try {
+                const res = await fetch('/api/provider/mec_query', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: q })
+                });
+                const data = await res.json();
+                resBox.style.display = 'block';
+                const rawRec = data.response || "";
+                resBox.innerHTML = `<strong>MEC Clinical Rationale:</strong><div style="margin-top:0.5rem; color: var(--text); line-height:1.5;">${parseClinicalOutcome(rawRec)}</div>`;
+            } catch (e) { alert("Error connecting to MEC engine."); }
+            finally { btn.disabled = false; btn.textContent = 'Analyze Guidelines'; }
+        }
+
         async function loadRoster() {
             try {
                 const res = await fetch('/api/provider/roster');
