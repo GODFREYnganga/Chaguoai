@@ -48,12 +48,28 @@ python main.py
 
 ## Project Structure
 
-- `mhc-backend/`: Core Flask server, RAG logic, and MEC engine.
-- `mhc-knowledge/`: Official Clinical PDF guidelines and documentation.
-- `mhc-docs/`: Technical setup and deployment guides.
-- `templates/`: Modern, clinical-grade UI for the Provider and Admin portals.
+- `mhc-backend/`: Core logic (Flask server, RAG logic, and WHO MEC engine).
+- **`mhc-dashboard/`**: Centralized HTML templates (Provider and Admin portals).
+- **`static/`**: Global assets (CSS, JS, and clinical media).
+- `mhc-knowledge/`: Official Clinical PDF guidelines for RAG retrieval.
+- `mhc-docs/`: Technical deployment guides.
 
+## Accessing the Dashboards
 
+Once the server is running (locally or on cloud), you can access the professional interfaces at the following URLs:
+
+### 1. Provider (CHW) Portal
+For community health workers to perform triage and manage rosters.
+- **URL:** `/provider`
+- **Login:** Requires an approved provider email. Use the registration page (`/provider/register`) to apply.
+
+### 2. Admin Portal
+For system administrators to approve providers and view analytics.
+- **URL:** `/admin`
+- **Access Code:** `ADMIN2026`
+
+> [!IMPORTANT]
+> The Admin Access Code is required to enter the protected management area. In a production setting, this should be set via the `ADMIN_SECRET` environment variable.
 
 ---
 **Disclaimer:** ChaguoAI provides clinical decision support and is NOT a substitute for professional medical advice. Always consult a healthcare provider for prescriptions.

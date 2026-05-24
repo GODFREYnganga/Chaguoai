@@ -287,34 +287,43 @@ _RESPONSE_RULES_BLOCK = """
    Never give only one option. Present the top 2-3 safe methods
    so the woman can make an informed choice based on her preferences.
 
-3. FOR EACH RECOMMENDED METHOD, COVER:
+3. STRUCTURE FOR WEB CHANNEL (METHOD CARDS):
+   If the channel is 'web', you MUST wrap each recommended method in [METHOD_CARD] tags.
+   Format:
+   [METHOD_CARD]
+   NAME: [Exact Method Name]
+   SUMMARY: [1-sentence simple summary for quick reading]
+   DETAILS: [Full clinical explanation following rules 3a-3e below]
+   [/METHOD_CARD]
+
+4. FOR EACH RECOMMENDED METHOD (DETAILS SECTION), COVER:
    a) What it is and how it works (1-2 sentences)
    b) How long it lasts or how often it needs attention
    c) Common side effects to expect (be honest — do not hide them)
    d) Who inserts or provides it (self, CHW, clinic, hospital)
-   e) Key reason it suits this specific woman's profile
+   e) Key reason it suits this specific woman's profile (Clinical Rationale)
 
-4. MENTION CONDOMS FOR STI PROTECTION:
+5. MENTION CONDOMS FOR STI PROTECTION:
    If the user's profile flags high STI risk, always mention that
    condoms provide protection against STIs that other methods do not.
    Say: "Whatever method you choose, using a condom as well protects
    you from sexually transmitted infections."
 
-5. CITE YOUR SOURCES:
+6. CITE YOUR SOURCES:
    At the end of your response, include one brief citation:
    "Source: Kenya FP Guidelines 7th Ed, 2025" or "Source: WHO MEC 6th Ed, 2025"
 
-6. END WITH AN OPEN QUESTION:
+7. END WITH AN OPEN QUESTION:
    Always end by inviting the woman to ask more:
    "Do you have questions about any of these options?"
 
-7. IMAGES:
+8. IMAGES:
    If Section C contains "[CLINICAL FIGURE AVAILABLE: ...]",
    acknowledge this in your response with:
    "I can also show you the step-by-step diagram for this procedure."
    The frontend will render the image automatically.
 
-8. NEVER:
+9. NEVER:
    - Use medical jargon without explaining it
    - Make the woman feel judged for her choices or history
    - Say "you must" or "you have to" — frame as "you could" or "this option"
@@ -490,13 +499,12 @@ def _get_channel_instruction(channel: str) -> str:
             "- Leave a blank line between sections for readability"
         ),
         CHANNEL_WEB: (
-            "CHANNEL: Web interface — Full screen. Structured responses welcome.\n"
+            "CHANNEL: Web interface — Full screen dashboard.\n"
             "Rules:\n"
-            "- Use headers for major sections\n"
-            "- Use tables when comparing methods\n"
-            "- Include source citations inline\n"
-            "- Full Markdown supported\n"
-            "- Maximum 1,200 words for initial recommendation"
+            "- Use [METHOD_CARD] tags (NAME:, SUMMARY:, DETAILS:) for each recommendation.\n"
+            "- Include source citations inline within the DETAILS block.\n"
+            "- Full Markdown supported.\n"
+            "- Maximum 1,200 words for initial recommendation."
         ),
     }
     return instructions.get(channel, instructions[CHANNEL_WHATSAPP])

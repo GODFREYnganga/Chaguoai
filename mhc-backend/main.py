@@ -17,7 +17,12 @@ from rag_prompt import build_system_prompt, format_user_profile_for_prompt
 
 load_dotenv()
 
-app = Flask(__name__)
+# Configure folders relative to this script's location
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+template_dir = os.path.abspath(os.path.join(BASE_DIR, '..', 'mhc-dashboard'))
+static_dir = os.path.abspath(os.path.join(BASE_DIR, '..', 'static'))
+
+app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'mhc_super_secret_123')
 
 @app.route("/")
@@ -58,6 +63,25 @@ except Exception as e:
 db = firestore.client()
 client = genai.Client()
 
+def format_to_e164(phone, country_code="+254"):
+    """Converts local phone formats (e.g. 07...) to E.164 (+254...)."""
+    if not phone: return phone
+    # Remove all non-numeric characters except +
+    cleaned = re.sub(r'[^\d+]', '', phone)
+    # Handle Kenyan format starting with 0
+    if cleaned.startswith('0') and len(cleaned) == 10:
+        return f"{country_code}{cleaned[1:]}"
+    # If it starts with country code without +
+    if cleaned.startswith(country_code[1:]) and not cleaned.startswith('+'):
+        return f"+{cleaned}"
+    # If no + and seems like a local number, prepend country code
+    if len(cleaned) <= 10 and not cleaned.startswith('+'):
+        return f"{country_code}{cleaned}"
+    return cleaned
+
+# Globals
+TWILIO_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886')
+
 def get_user_state(phone):
     doc = db.collection('contraceptive_users').document(phone).get()
     if doc.exists:
@@ -67,19 +91,28 @@ def get_user_state(phone):
 def send_whatsapp_message(from_number, to_number, body_text, media_url=None):
     account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
     auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
-    if account_sid and auth_token:
-        twilio_client = TwilioClient(account_sid, auth_token)
-        try:
-            twilio_client.messages.create(
-                from_=from_number,
-                body=body_text[:1500],
-                to=to_number,
-                media_url=[media_url] if media_url else None
-            )
-        except Exception as e:
-            print(f"Twilio Error: {e}")
-    else:
+    
+    if not account_sid or not auth_token:
         print("Missing Twilio Auth credentials in environment!")
+        return
+
+    # Automatically handle channel prefixing for WhatsApp
+    # Twilio requires both from and to to have the 'whatsapp:' prefix
+    if from_number.startswith('whatsapp:') and not to_number.startswith('whatsapp:'):
+        to_number = f"whatsapp:{to_number}"
+    elif not from_number.startswith('whatsapp:') and to_number.startswith('whatsapp:'):
+        from_number = f"whatsapp:{from_number}"
+
+    twilio_client = TwilioClient(account_sid, auth_token)
+    try:
+        twilio_client.messages.create(
+            from_=from_number,
+            body=body_text[:1500],
+            to=to_number,
+            media_url=[media_url] if media_url else None
+        )
+    except Exception as e:
+        print(f"Twilio Error: {e}")
 
 def send_whatsapp_buttons(from_number, to_number, body_text, buttons):
     # Simulated quick replies using text format
@@ -545,12 +578,26 @@ def admin_portal():
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login_page'))
     return render_template('admin_portal.html')
+# Access Codes for Admin
+ADMIN_CODE = "ADMIN2026"
+
+def to_fhir_patient(user_data):
+    """Maps Firestore user data to a basic FHIR R4 Patient resource."""
+    return {
+        "resourceType": "Patient",
+        "id": user_data.get('phone', 'unknown').replace('+', ''),
+        "identifier": [{"system": "tel", "value": user_data.get('phone')}],
+        "name": [{"text": user_data.get('name', 'Anonymous Client')}],
+        "extension": [
+            {"url": "http://chaguoai.ke/fhir/assigned_provider", "valueString": user_data.get('assigned_provider_id')}
+        ]
+    }
 
 @app.route("/api/admin/login", methods=['POST'])
 def api_admin_login():
     data = request.json
     code = data.get('access_code')
-    if code == os.environ.get('ADMIN_ACCESS_CODE', 'ADMIN2026'):
+    if code == ADMIN_CODE:
         session['admin_logged_in'] = True
         return jsonify({"success": True})
     return jsonify({"success": False, "error": "Invalid Access Code"}), 401
@@ -623,7 +670,7 @@ def api_provider_register():
 def api_provider_login():
     data = request.json
     email = data.get('email')
-    docs = list(db.collection('providers').where('email', '==', email).where('status', '==', 'approved').stream())
+    docs = list(db.collection('providers').where(filter=firestore.FieldFilter('email', '==', email)).where(filter=firestore.FieldFilter('status', '==', 'approved')).stream())
     if docs:
         session['provider_id'] = docs[0].id
         return jsonify({"success": True, "role": docs[0].to_dict().get('role')})
@@ -642,12 +689,14 @@ def api_provider_me():
     if not doc.exists: return jsonify({"error": "Not Found"}), 404
     return jsonify(doc.to_dict())
 
+@app.route("/api/provider/roster", methods=['GET'])
+def api_provider_roster():
     pid = session.get('provider_id')
     if not pid: return jsonify({"error": "Unauthorized"}), 401
     
     users = []
-    # Strictly filter by the provider's ID
-    for doc in db.collection('contraceptive_users').where('assigned_provider_id', '==', pid).stream():
+    # Strictly filter by the provider's ID using modern FieldFilter
+    for doc in db.collection('contraceptive_users').where(filter=firestore.FieldFilter('assigned_provider_id', '==', pid)).stream():
         u = doc.to_dict()
         u['id'] = doc.id
         users.append(u)
@@ -697,48 +746,85 @@ def api_provider_submit_triage():
     phone = data.get('phone')
     if not phone: return jsonify({"error": "Phone required"}), 400
     
-    # Save the survey answers from the web form
+    # Map raw data to Firestore document
+    phone = format_to_e164(phone) # Standardize to E.164
+    data['phone'] = phone
     data['assigned_provider_id'] = pid
     data['stage'] = 'REGISTERED'
     data['registered_at'] = firestore.SERVER_TIMESTAMP
     
     db.collection('contraceptive_users').document(phone).set(data)
     
-    # Trigger the MEC assessment immediately for the response
     try:
-        # Re-use the background processing logic by initializing a dummy profile
+        # 1. Initialize clinical profile for assessment with correct data types
         prof = UserProfile()
         prof.age_years = int(data.get('age', 18))
-        # (Simplified mapping for the API response)
+        prof.number_of_children = int(data.get('parity', 0))
+        prof.breastfeeding = "Yes" in data.get('nursing', 'No')
+        prof.smoker = "Yes" in data.get('smoking', 'No')
+        
+        # Additional clinical flags from the 13-question set
+        prof.fertility_intention = data.get('future_children')
+        if "High" in data.get('blood_pressure', ''):
+            prof.hypertension = True
+        if "Positive" in data.get('hiv_status', ''):
+            prof.hiv_positive = True
+        if "High" in data.get('sti_risk', ''):
+            prof.high_sti_risk = True
+
+        # 2. Run MEC Assessment
         mec_result = run_mec_assessment(prof)
         mec_text = format_mec_result_for_llm(mec_result)
         
-        # Grounding with RAG
+        # 3. Ground with RAG specifically for the client's preferences or health history
+        search_query = f"Contraception for {data.get('age')}yo, parity {data.get('parity')}, {data.get('health_history')}. Preference: {data.get('preference')}"
         retriever = get_retriever()
-        chunks = retriever.retrieve("contraceptive eligibility guidelines for " + str(data.get('prefer_not_to_use', '')), top_k=3)
+        chunks = retriever.retrieve(search_query, top_k=3)
         context = retriever.format_context_for_llm(chunks)
         
-        # Call Gemini for a clinical summary
+        # 4. Generate Authoritative Recommendation with Referral logic for LARCs
         sys_prompt = build_system_prompt(
             mec_result_text=mec_text,
             retrieved_context=context,
-            user_profile_summary=f"Web Triage for {phone}",
+            user_profile_summary=f"Clinical Web Triage for {data.get('name')} ({phone})",
             channel="web",
             language="english"
         )
         
+        # Cleanse data for JSON serialization (remove SERVER_TIMESTAMP which is a Sentinel)
+        serializable_data = {k: v for k, v in data.items() if k != 'registered_at'}
+        
+        full_query = (
+            f"{sys_prompt}\n\nClient Data: {json.dumps(serializable_data)}\n\n"
+            "Please provide a final recommendation. IMPORTANT: If you recommend Long-Acting methods (Implants/IUDs/Sterilization), "
+            "you MUST include a 'Referral Note' section explaining that the client needs to visit a level 4+ hospital for the procedure."
+        )
+        
         ai_response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=f"{sys_prompt}\n\nPlease generate a final clinical recommendation for this client based on the answers submitted."
+            contents=full_query
         )
+        
+        recommendation = ai_response.text
+        
+        # 5. AUTOMATED NOTIFICATION: Send summary to patient via WhatsApp/SMS
+        # Using a simplified version for the WhatsApp message
+        sms_body = (
+            f"Habari {data.get('name')}! Nimerecord registration yako ya ChaguoAI. "
+            f"Recommendation yako: {recommendation[:200]}... "
+            "Unaweza kuendelea kunitumia message hapa kwa maelezo zaidi."
+        )
+        send_whatsapp_message(TWILIO_NUMBER, phone, sms_body)
         
         return jsonify({
             "success": True, 
-            "recommendation": ai_response.text,
-            "mec_result": mec_text
+            "recommendation": recommendation,
+            "mec_result": mec_text,
+            "fhir_view": to_fhir_patient(data)
         })
     except Exception as e:
-        return jsonify({"success": True, "note": "Data saved but recommendation engine timeout.", "error": str(e)})
+        print(f"Triage Error: {str(e)}")
+        return jsonify({"success": True, "note": "Data saved, but clinical engine failed.", "error": str(e)})
 
 if __name__ == "__main__":
     # For local dev: default to 8080. For Render: uses the dynamic $PORT.
