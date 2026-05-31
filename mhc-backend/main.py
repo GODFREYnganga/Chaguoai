@@ -710,11 +710,10 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
             if user_lang != 'english' and not incoming_msg.startswith("Please analyze"):
                 try:
                     # Quick translation for search optimization
-                    trans_resp = client.models.generate_content(
-                        model='gemini-2.5-flash',
-                        contents=f"You are a medical search optimizer. Translate this user sexual health query into ONLY 3-6 English medical keywords for a textbook search. Output ONLY the words, no explanation. Query: {incoming_msg}"
-                    )
-                    search_query = trans_resp.text.strip()
+                    search_query = generate_gemini_text(
+                        f"You are a medical search optimizer. Translate this user sexual health query into ONLY 3-6 English medical keywords for a textbook search. Output ONLY the words, no explanation. Query: {incoming_msg}",
+                        max_output_tokens=80
+                    ).strip()
                     # Strip any "Keywords:" prefix if Gemini adds it
                     search_query = re.sub(r'^(Keywords|Search|Keywords:)\s*', '', search_query, flags=re.IGNORECASE)
                     print(f"[{user_phone}] Translated search query: {search_query}")
@@ -742,11 +741,7 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
                 user_name=user.get('name', '')
             )
             
-            ai_response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=f"{sys_prompt}\n\nUser Message: {incoming_msg}"
-            )
-            reply_text = ai_response.text
+            reply_text = generate_gemini_text(f"{sys_prompt}\n\nUser Message: {incoming_msg}")
             
             # 5. Send Response
             send_whatsapp_message(to_number, user_phone, reply_text)
