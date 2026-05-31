@@ -46,6 +46,45 @@ python rag_ingestor.py
 python main.py
 ```
 
+### 6. Background Triage Worker
+Provider triage recommendations run through Redis Queue (RQ), so production needs both a web service and a worker service.
+
+Required environment variables:
+```bash
+REDIS_URL=redis://...
+TRIAGE_QUEUE_NAME=triage
+TRIAGE_JOB_TIMEOUT_SECONDS=180
+GEMINI_TIMEOUT_MS=20000
+```
+
+Local worker:
+```bash
+cd mhc-backend
+python worker.py
+```
+
+Render setup:
+- Web service start command: `gunicorn main:app --bind 0.0.0.0:$PORT`
+- Worker service start command: `python worker.py`
+- Both services must use the same `REDIS_URL`, Firebase credentials, Gemini credentials, and Twilio credentials.
+
+### 7. WhatsApp Interactive Menus
+The WhatsApp flow supports Twilio Content templates for quick replies and list pickers, with numbered text fallback when templates are not configured.
+
+Recommended Twilio Content templates:
+- `TWILIO_CONTENT_QUICK_REPLY_SID`: a `twilio/quick-reply` template with variables `body`, `option_1`, `option_1_payload`, `option_2`, `option_2_payload`, `option_3`, `option_3_payload`.
+- `TWILIO_CONTENT_LIST_PICKER_SID`: a `twilio/list-picker` template with variables `body`, `button`, `option_1`, `option_1_payload` through the maximum number of rows you intend to support.
+
+Main WhatsApp menu:
+```text
+Method Match
+Ask Question
+Myths & Facts
+Report Side Effects
+```
+
+Single-choice survey questions use quick replies when they have 2-3 options and list pickers when they have 4+ options. Multi-select clinical questions, such as health conditions and methods the user prefers not to use, intentionally stay as numbered text because WhatsApp quick replies are single-choice.
+
 ## Project Structure
 
 - `mhc-backend/`: Core logic (Flask server, RAG logic, and WHO MEC engine).

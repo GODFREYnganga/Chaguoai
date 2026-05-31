@@ -136,7 +136,7 @@ def process_method_match(answers, phone_number, db, client):
             
             print(f"[{phone_number}] USSD: Generating Final Decision with Gemini...")
             ai_response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model='gemini-2.5-flash',
                 contents=f"{sys_prompt}\n\nInstruction: Write the top Tier-1 safe method for this user based strictly on the MEC Results. Use a maximum of 140 characters."
             )
             response_text = ai_response.text.strip()

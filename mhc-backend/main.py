@@ -9,11 +9,18 @@ from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client as TwilioClient
 from firebase_admin import firestore, initialize_app, credentials
 from google import genai
+from google.genai import types
 
 from ussd_logic import handle_ussd_request
 from who_mec_engine import UserProfile, run_mec_assessment, format_mec_result_for_llm
 from rag_ingestor import get_retriever
 from rag_prompt import build_system_prompt, format_user_profile_for_prompt
+from task_queue import (
+    TRIAGE_JOB_FAILURE_TTL_SECONDS,
+    TRIAGE_JOB_RESULT_TTL_SECONDS,
+    TRIAGE_JOB_TIMEOUT_SECONDS,
+    get_triage_queue,
+)
 
 load_dotenv()
 
@@ -62,6 +69,29 @@ except Exception as e:
     print(f"Warning: Could not initialize GenAI. {e}")
     client = None
 
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_TIMEOUT_MS = int(os.environ.get("GEMINI_TIMEOUT_MS", "20000"))
+GEMINI_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "900"))
+GEMINI_RETRY_ATTEMPTS = int(os.environ.get("GEMINI_RETRY_ATTEMPTS", "1"))
+
+def generate_gemini_text(prompt, *, max_output_tokens=None, temperature=0.2):
+    if client is None:
+        raise RuntimeError("GenAI client is not initialized")
+
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_output_tokens or GEMINI_MAX_OUTPUT_TOKENS,
+            http_options=types.HttpOptions(
+                timeout=GEMINI_TIMEOUT_MS,
+                retry_options=types.HttpRetryOptions(attempts=GEMINI_RETRY_ATTEMPTS),
+            ),
+        )
+    )
+    return response.text or ""
+
 def format_to_e164(phone, country_code="+254"):
     """Converts local phone formats (e.g. 07...) to E.164 (+254...)."""
     if not phone: return phone
@@ -80,6 +110,19 @@ def format_to_e164(phone, country_code="+254"):
 
 # Globals
 TWILIO_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886')
+TWILIO_CONTENT_QUICK_REPLY_SID = os.environ.get('TWILIO_CONTENT_QUICK_REPLY_SID')
+TWILIO_CONTENT_LIST_PICKER_SID = os.environ.get('TWILIO_CONTENT_LIST_PICKER_SID')
+
+MAIN_MENU_OPTIONS = {
+    "english": ["Method Match", "Ask Question", "Myths & Facts", "Report Side Effects"],
+    "swahili": ["Njia Inayonifaa", "Uliza Swali", "Ukweli na Imani", "Ripoti Madhara"],
+    "french": ["Methode adaptee", "Poser Question", "Mythes et faits", "Signaler effets"],
+    "portuguese": ["Metodo ideal", "Fazer Pergunta", "Mitos e fatos", "Relatar efeitos"],
+}
+
+LANGUAGE_OPTIONS = ["English", "Kiswahili", "Francais", "Portugues"]
+HEALTH_CONDITION_OPTIONS = ["High blood pressure", "Diabetes", "Heart disease", "Liver problem", "Cancer", "Migraines", "None"]
+METHOD_AVOID_OPTIONS = ["Pills", "Injectables", "IUD", "Implants", "None"]
 
 def get_user_state(phone):
     doc = db.collection('contraceptive_users').document(phone).get()
@@ -114,18 +157,118 @@ def send_whatsapp_message(from_number, to_number, body_text, media_url=None):
         print(f"Twilio Error: {e}")
 
 def send_whatsapp_buttons(from_number, to_number, body_text, buttons):
-    # Simulated quick replies using text format
+    send_whatsapp_options(from_number, to_number, body_text, buttons)
+
+def _ensure_whatsapp_prefix(from_number, to_number):
+    if from_number.startswith('whatsapp:') and not to_number.startswith('whatsapp:'):
+        to_number = f"whatsapp:{to_number}"
+    elif not from_number.startswith('whatsapp:') and to_number.startswith('whatsapp:'):
+        from_number = f"whatsapp:{from_number}"
+    return from_number, to_number
+
+def _fallback_option_message(body_text, options, multi_select=False):
     menu_body = f"{body_text}\n\n"
-    for i, btn in enumerate(buttons):
-        menu_body += f"{i+1}️⃣ *{btn}*\n"
-    menu_body += "\n_(Jibu kwa nambari au bonyeza jibu lako)_"
-    send_whatsapp_message(from_number, to_number, menu_body)
+    for i, option in enumerate(options, start=1):
+        menu_body += f"{i}. *{option}*\n"
+    if multi_select:
+        menu_body += "\nReply with one or more numbers, for example 1,2. Use the None option alone."
+    else:
+        menu_body += "\nReply with a number or tap an option."
+    return menu_body
+
+def _truncate_option(text, limit=20):
+    text = str(text).strip()
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "..."
+
+def _send_twilio_content(from_number, to_number, content_sid, variables):
+    account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+    auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
+    if not account_sid or not auth_token or not content_sid:
+        return False
+
+    from_number, to_number = _ensure_whatsapp_prefix(from_number, to_number)
+    try:
+        TwilioClient(account_sid, auth_token).messages.create(
+            from_=from_number,
+            to=to_number,
+            content_sid=content_sid,
+            content_variables=json.dumps(variables)
+        )
+        return True
+    except Exception as e:
+        print(f"Twilio Content Error: {e}")
+        return False
+
+def send_whatsapp_quick_replies(from_number, to_number, body_text, options):
+    variables = {"body": body_text}
+    for i, option in enumerate(options[:3], start=1):
+        variables[f"option_{i}"] = _truncate_option(option)
+        variables[f"option_{i}_payload"] = str(i)
+
+    if len(options) <= 3 and _send_twilio_content(from_number, to_number, TWILIO_CONTENT_QUICK_REPLY_SID, variables):
+        return
+
+    send_whatsapp_message(from_number, to_number, _fallback_option_message(body_text, options))
+
+def send_whatsapp_list_picker(from_number, to_number, body_text, options, button_text="Choose"):
+    variables = {"body": body_text, "button": button_text}
+    for i, option in enumerate(options, start=1):
+        variables[f"option_{i}"] = str(option)
+        variables[f"option_{i}_payload"] = str(i)
+
+    if _send_twilio_content(from_number, to_number, TWILIO_CONTENT_LIST_PICKER_SID, variables):
+        return
+
+    send_whatsapp_message(from_number, to_number, _fallback_option_message(body_text, options))
+
+def send_whatsapp_options(from_number, to_number, body_text, options, multi_select=False):
+    if multi_select:
+        send_whatsapp_message(from_number, to_number, _fallback_option_message(body_text, options, multi_select=True))
+    elif len(options) <= 3:
+        send_whatsapp_quick_replies(from_number, to_number, body_text, options)
+    else:
+        send_whatsapp_list_picker(from_number, to_number, body_text, options)
+
+def extract_whatsapp_reply(form):
+    return (
+        form.get('ButtonPayload')
+        or form.get('ListId')
+        or form.get('ButtonText')
+        or form.get('ListTitle')
+        or form.get('Body')
+        or ''
+    ).strip()
+
+def option_selected(message, option_number, *keywords):
+    msg = str(message or '').lower().strip()
+    if msg == str(option_number):
+        return True
+    return any(keyword in msg for keyword in keywords)
+
+def question_body(text):
+    return str(text).split("\n", 1)[0]
+
+def send_main_menu(from_number, to_number, lang, greeting=None):
+    s = STRINGS.get(lang, STRINGS["english"])
+    menu_text = s["menu"]
+    if greeting:
+        menu_text = f"{greeting}{menu_text}"
+    send_whatsapp_list_picker(from_number, to_number, menu_text, MAIN_MENU_OPTIONS.get(lang, MAIN_MENU_OPTIONS["english"]), "Menu")
+
+def send_language_menu(from_number, to_number):
+    send_whatsapp_list_picker(
+        from_number,
+        to_number,
+        "Welcome to ChaguoAI. Please select your preferred language.",
+        LANGUAGE_OPTIONS,
+        "Language"
+    )
 
 # ======================== WEBHOOKS ======================== 
 @app.route("/webhook", methods=['POST'])
 @app.route("/whatsapp", methods=['POST'])
 def webhook():
-    incoming_msg = request.values.get('Body', '')
+    incoming_msg = extract_whatsapp_reply(request.values)
     user_phone = request.values.get('From', '')
     to_number = request.values.get('To', '')
     
@@ -140,27 +283,38 @@ def webhook():
 LANGUAGES = {
     "1": "english", "2": "swahili", "3": "french", "4": "portuguese"
 }
+LANGUAGE_ALIASES = {
+    "english": "english",
+    "kiswahili": "swahili",
+    "swahili": "swahili",
+    "francais": "french",
+    "français": "french",
+    "french": "french",
+    "portugues": "portuguese",
+    "português": "portuguese",
+    "portuguese": "portuguese",
+}
 
 STRINGS = {
     "english": {
-        "menu": "Welcome to ChaguoAI — Your Contraception Advisor 🌸\n\nI'd like to help you today with:\n1️⃣ *Method Match (personalized recommendations)*\n2️⃣ *Ask any question about contraception*\n3️⃣ *About us*\n\nPlease choose a number or ask your question below.",
+        "menu": "Welcome to ChaguoAI — your contraception decision support assistant.\n\nHow can I help today?",
         "ask_name": "Great! Let's start with your name.",
-        "menu_btns": ["Method Match", "Ask Question", "About Us"]
+        "menu_btns": MAIN_MENU_OPTIONS["english"]
     },
     "swahili": {
-        "menu": "Habari! Karibu ChaguoAI — Mshauri wako wa Upangaji Uzazi 🌸\n\nNingependa kukusaidia leo kwa:\n1️⃣ *Njia inayofaa kwangu (Method Match)*\n2️⃣ *Uliza swali lolote kuhusu uzazi*\n3️⃣ *Maelezo zaidi kutuhusu*\n\nTafadhali chagua nambari au uulize swali lako hapa chini.",
+        "menu": "Habari! Karibu ChaguoAI — msaidizi wako wa upangaji uzazi.\n\nNinawezaje kukusaidia leo?",
         "ask_name": "Safi sana! Hebu nianze kwa kufahamu jina lako kwanza.",
-        "menu_btns": ["Njia Yangu", "Uliza Swali", "Kuhusu Sisi"]
+        "menu_btns": MAIN_MENU_OPTIONS["swahili"]
     },
     "french": {
-        "menu": "Bienvenue sur ChaguoAI — Votre conseiller en contraception 🌸\n\nJ'aimerais vous aider aujourd'hui avec :\n1️⃣ *Recommandations personnalisées (Method Match)*\n2️⃣ *Posez n'importe quelle question sur la contraception*\n3️⃣ *À propos de nous*\n\nVeuillez choisir un numéro ou poser votre question ci-dessous.",
+        "menu": "Bienvenue sur ChaguoAI — votre assistant d'aide a la decision contraceptive.\n\nComment puis-je vous aider aujourd'hui ?",
         "ask_name": "Génial ! Commençons par votre nom.",
-        "menu_btns": ["Method Match", "Poser Question", "À propos"]
+        "menu_btns": MAIN_MENU_OPTIONS["french"]
     },
     "portuguese": {
-        "menu": "Bem-vindo ao ChaguoAI — Seu consultor de contracepção 🌸\n\nGostaria de te ajudar hoje com:\n1️⃣ *Recomendações personalizadas (Method Match)*\n2️⃣ *Faça qualquer pergunta sobre contracepção*\n3️⃣ *Sobre nós*\n\nEscolha um número ou faça sua pergunta abaixo.",
+        "menu": "Bem-vindo ao ChaguoAI — seu assistente de apoio a decisao contraceptiva.\n\nComo posso ajudar hoje?",
         "ask_name": "Ótimo! Vamos começar com o seu nome.",
-        "menu_btns": ["Method Match", "Fazer Pergunta", "Sobre nós"]
+        "menu_btns": MAIN_MENU_OPTIONS["portuguese"]
     }
 }
 SURVEY_STRINGS = {
@@ -264,6 +418,7 @@ SURVEY_STRINGS = {
 
 def process_webhook_background(incoming_msg, user_phone, to_number):
     try:
+        incoming_msg = str(incoming_msg or '').strip()
         user = get_user_state(user_phone)
         if not user:
             # First interaction - Ask for Language
@@ -282,7 +437,7 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
                 "3. Français\n"
                 "4. Português"
             )
-            send_whatsapp_message(to_number, user_phone, lang_text)
+            send_language_menu(to_number, user_phone)
             return
             
         stage = user.get("stage")
@@ -290,15 +445,14 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
 
         if stage == "AWAITING_LANGUAGE":
             msg = incoming_msg.strip()
-            if msg in LANGUAGES:
-                lang_code = LANGUAGES[msg]
+            lang_code = LANGUAGES.get(msg) or LANGUAGE_ALIASES.get(msg.lower())
+            if lang_code:
                 db.collection('contraceptive_users').document(user_phone).update({
                     "language": lang_code,
                     "stage": "MAIN_MENU"
                 })
                 # Show Main Menu in selected language
-                s = STRINGS[lang_code]
-                send_whatsapp_buttons(to_number, user_phone, s["menu"], s["menu_btns"])
+                send_main_menu(to_number, user_phone, lang_code)
             else:
                 send_whatsapp_message(to_number, user_phone, "Invalid selection. Please reply with 1, 2, 3 or 4.")
             return
@@ -306,6 +460,39 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
         if stage == "MAIN_MENU":
             msg = incoming_msg.lower().strip()
             s = STRINGS[lang]
+            if option_selected(msg, 1, 'njia', 'match', 'method', 'uzazi', 'panga', 'birth', 'plan', 'tayari', 'kuanza', 'recommandations', 'recomendacoes', 'metodo'):
+                db.collection('contraceptive_users').document(user_phone).update({"stage": "AWAITING_NAME"})
+                send_whatsapp_message(to_number, user_phone, s["ask_name"])
+                return
+            if option_selected(msg, 2, 'swali', 'question', 'pergunta'):
+                prompt = {
+                    "english": "Ask me anything about contraception. I'm listening...",
+                    "swahili": "Unaweza kuniuliza swali lolote kuhusu uzazi. Nausikiliza...",
+                    "french": "Posez-moi n'importe quelle question sur la contraception. Je vous ecoute...",
+                    "portuguese": "Pergunte-me qualquer coisa sobre contracepcao. Estou ouvindo..."
+                }
+                send_whatsapp_message(to_number, user_phone, prompt.get(lang, prompt["english"]))
+                return
+            if option_selected(msg, 3, 'myth', 'fact', 'imani', 'ukweli', 'mythe', 'mito'):
+                db.collection('contraceptive_users').document(user_phone).update({"stage": "AWAITING_MYTH_QUESTION"})
+                prompt = {
+                    "english": "Tell me the contraception myth or concern you have heard, and I will answer using clinical guidance.",
+                    "swahili": "Ni imani au wasiwasi gani kuhusu uzazi umesikia? Nitakujibu kwa kutumia mwongozo wa kitabibu.",
+                    "french": "Dites-moi le mythe ou la preoccupation sur la contraception, et je repondrai avec des conseils cliniques.",
+                    "portuguese": "Conte-me o mito ou preocupacao sobre contracepcao, e responderei com orientacao clinica."
+                }
+                send_whatsapp_message(to_number, user_phone, prompt.get(lang, prompt["english"]))
+                return
+            if option_selected(msg, 4, 'side', 'effect', 'madhara', 'effet', 'efeito', 'report', 'ripoti'):
+                db.collection('contraceptive_users').document(user_phone).update({"stage": "AWAITING_SIDE_EFFECT_REPORT"})
+                prompt = {
+                    "english": "Please describe the side effect, when it started, and the method you are using. If symptoms are severe, seek urgent care now.",
+                    "swahili": "Tafadhali eleza madhara, yalianza lini, na njia unayotumia. Kama dalili ni kali, tafuta huduma ya dharura sasa.",
+                    "french": "Decrivez l'effet secondaire, sa date de debut et la methode utilisee. Si les symptomes sont graves, consultez en urgence.",
+                    "portuguese": "Descreva o efeito colateral, quando comecou e o metodo usado. Se os sintomas forem graves, procure atendimento urgente."
+                }
+                send_whatsapp_message(to_number, user_phone, prompt.get(lang, prompt["english"]))
+                return
             if any(k in msg for k in ['1', 'njia', 'match', 'uzazi', 'panga', 'birth', 'plan', 'tayari', 'kuanza', 'recommandations', 'recomendações']):
                 db.collection('contraceptive_users').document(user_phone).update({"stage": "AWAITING_NAME"})
                 send_whatsapp_message(to_number, user_phone, s["ask_name"])
@@ -331,6 +518,29 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
         
         # --- (IMPLEMENT 13 QUESTIONS STATE MACHINE WITH LOCALIZATION) ---
         q = SURVEY_STRINGS[lang]
+
+        if stage == "AWAITING_SIDE_EFFECT_REPORT":
+            report_text = incoming_msg.strip()
+            db.collection('contraceptive_users').document(user_phone).collection('side_effects').add({
+                'report': report_text,
+                'language': lang,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'source': 'whatsapp'
+            })
+            db.collection('contraceptive_users').document(user_phone).update({"stage": "MAIN_MENU"})
+            response = {
+                "english": "Thank you. I have recorded this for review. If you have heavy bleeding, severe lower abdominal pain, chest pain, shortness of breath, fainting, severe headache, or signs of pregnancy, please seek urgent care now.",
+                "swahili": "Ahsante. Nimehifadhi taarifa hii kwa kufuatiliwa. Kama una damu nyingi, maumivu makali ya tumbo la chini, maumivu ya kifua, shida ya kupumua, kuzimia, kichwa kikali, au dalili za ujauzito, tafuta huduma ya dharura sasa.",
+                "french": "Merci. J'ai enregistre ces informations pour suivi. En cas de saignement abondant, douleur abdominale severe, douleur thoracique, essoufflement, malaise, cefalee severe ou signes de grossesse, consultez en urgence.",
+                "portuguese": "Obrigado. Registrei isso para acompanhamento. Se houver sangramento intenso, dor abdominal forte, dor no peito, falta de ar, desmaio, dor de cabeca intensa ou sinais de gravidez, procure atendimento urgente."
+            }
+            send_whatsapp_message(to_number, user_phone, response.get(lang, response["english"]))
+            return
+
+        if stage == "AWAITING_MYTH_QUESTION":
+            db.collection('contraceptive_users').document(user_phone).update({"stage": "MAIN_MENU"})
+            incoming_msg = f"Please answer this contraception myth or concern clearly and clinically: {incoming_msg.strip()}"
+            user["stage"] = "MAIN_MENU"
         
         if stage == "AWAITING_NAME":
             db.collection('contraceptive_users').document(user_phone).update({"name": incoming_msg.strip(), "stage": "AWAITING_Q1_AGE"})
@@ -373,7 +583,7 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
  
         if stage == "AWAITING_Q5_MORE_CHILDREN":
             db.collection('contraceptive_users').document(user_phone).update({"more_children": incoming_msg.strip(), "stage": "AWAITING_Q6_HEALTH"})
-            send_whatsapp_message(to_number, user_phone, q["q6"])
+            send_whatsapp_options(to_number, user_phone, question_body(q["q6"]), HEALTH_CONDITION_OPTIONS, multi_select=True)
             return
  
         if stage == "AWAITING_Q6_HEALTH":
@@ -417,7 +627,7 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
 
         if stage == "AWAITING_Q12_STI":
             db.collection('contraceptive_users').document(user_phone).update({"sti_concern": incoming_msg.strip(), "stage": "AWAITING_Q13_PREFERENCES"})
-            send_whatsapp_message(to_number, user_phone, q["q13"])
+            send_whatsapp_options(to_number, user_phone, question_body(q["q13"]), METHOD_AVOID_OPTIONS, multi_select=True)
             return
 
         if stage == "AWAITING_Q13_PREFERENCES":
@@ -447,7 +657,7 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
                 }
                 menu_text = greeting.get(lang, "Hello! ") + menu_text
             
-            send_whatsapp_buttons(to_number, user_phone, menu_text, s["menu_btns"])
+            send_main_menu(to_number, user_phone, lang, greeting.get(lang, "Hello! ") if name else None)
             return
 
         # --- THE WHO MEC PIPELINE & GENERAL CHAT ---
@@ -753,11 +963,8 @@ def api_provider_mec_query():
             f"Clinician Query: {query}"
         )
         
-        ai_response = client.models.generate_content(
-            model='gemini-2.5-flash', # Using 2.5 for higher precision in logic
-            contents=prompt
-        )
-        return jsonify({"success": True, "response": ai_response.text})
+        response_text = generate_gemini_text(prompt, max_output_tokens=900)
+        return jsonify({"success": True, "response": response_text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -766,7 +973,7 @@ def api_provider_submit_triage():
     pid = session.get('provider_id')
     if not pid: return jsonify({"error": "Unauthorized"}), 401
     
-    data = request.json
+    data = request.json or {}
     phone = data.get('phone')
     if not phone: return jsonify({"error": "Phone required"}), 400
     
@@ -778,77 +985,74 @@ def api_provider_submit_triage():
     data['registered_at'] = firestore.SERVER_TIMESTAMP
     
     db.collection('contraceptive_users').document(phone).set(data)
-    
-    try:
-        # 1. Initialize clinical profile for assessment with correct data types
-        prof = UserProfile()
-        prof.age_years = int(data.get('age', 18))
-        prof.number_of_children = int(data.get('parity', 0))
-        prof.breastfeeding = "Yes" in data.get('nursing', 'No')
-        prof.smoker = "Yes" in data.get('smoking', 'No')
-        
-        # Additional clinical flags from the 13-question set
-        prof.fertility_intention = data.get('future_children')
-        if "High" in data.get('blood_pressure', ''):
-            prof.hypertension = True
-        if "Positive" in data.get('hiv_status', ''):
-            prof.hiv_positive = True
-        if "High" in data.get('sti_risk', ''):
-            prof.high_sti_risk = True
+    job_ref = db.collection('triage_jobs').document()
+    job_ref.set({
+        "status": "queued",
+        "phone": phone,
+        "assigned_provider_id": pid,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    })
+    db.collection('contraceptive_users').document(phone).set({
+        "triage_status": "queued",
+        "latest_triage_job_id": job_ref.id,
+        "triage_queued_at": firestore.SERVER_TIMESTAMP,
+    }, merge=True)
 
-        # 2. Run MEC Assessment
-        mec_result = run_mec_assessment(prof)
-        mec_text = format_mec_result_for_llm(mec_result)
-        
-        # 3. Ground with RAG specifically for the client's preferences or health history
-        search_query = f"Contraception for {data.get('age')}yo, parity {data.get('parity')}, {data.get('health_history')}. Preference: {data.get('preference')}"
-        retriever = get_retriever()
-        chunks = retriever.retrieve(search_query, top_k=3)
-        context = retriever.format_context_for_llm(chunks)
-        
-        # 4. Generate Authoritative Recommendation with Referral logic for LARCs
-        sys_prompt = build_system_prompt(
-            mec_result_text=mec_text,
-            retrieved_context=context,
-            user_profile_summary=f"Clinical Web Triage for {data.get('name')} ({phone})",
-            channel="web",
-            language="english"
+    triage_payload = {k: v for k, v in data.items() if k != 'registered_at'}
+    try:
+        rq_job = get_triage_queue().enqueue_call(
+            func="triage_tasks.process_triage_job",
+            args=(job_ref.id, triage_payload),
+            job_id=f"triage_{job_ref.id}",
+            job_timeout=TRIAGE_JOB_TIMEOUT_SECONDS,
+            result_ttl=TRIAGE_JOB_RESULT_TTL_SECONDS,
+            failure_ttl=TRIAGE_JOB_FAILURE_TTL_SECONDS,
         )
-        
-        # Cleanse data for JSON serialization (remove SERVER_TIMESTAMP which is a Sentinel)
-        serializable_data = {k: v for k, v in data.items() if k != 'registered_at'}
-        
-        full_query = (
-            f"{sys_prompt}\n\nClient Data: {json.dumps(serializable_data)}\n\n"
-            "Please provide a final recommendation. IMPORTANT: If you recommend Long-Acting methods (Implants/IUDs/Sterilization), "
-            "you MUST include a 'Referral Note' section explaining that the client needs to visit a level 4+ hospital for the procedure."
-        )
-        
-        ai_response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=full_query
-        )
-        
-        recommendation = ai_response.text
-        
-        # 5. AUTOMATED NOTIFICATION: Send summary to patient via WhatsApp/SMS
-        # Using a simplified version for the WhatsApp message
-        sms_body = (
-            f"Habari {data.get('name')}! Nimerecord registration yako ya ChaguoAI. "
-            f"Recommendation yako: {recommendation[:200]}... "
-            "Unaweza kuendelea kunitumia message hapa kwa maelezo zaidi."
-        )
-        send_whatsapp_message(TWILIO_NUMBER, phone, sms_body)
-        
-        return jsonify({
-            "success": True, 
-            "recommendation": recommendation,
-            "mec_result": mec_text,
-            "fhir_view": to_fhir_patient(data)
+        job_ref.update({
+            "rq_job_id": rq_job.id,
+            "queued_at": firestore.SERVER_TIMESTAMP,
         })
     except Exception as e:
-        print(f"Triage Error: {str(e)}")
-        return jsonify({"success": True, "note": "Data saved, but clinical engine failed.", "error": str(e)})
+        error_message = str(e)
+        print(f"Triage enqueue failed: {error_message}")
+        job_ref.update({
+            "status": "failed",
+            "error": f"Could not queue triage job: {error_message}",
+            "completed_at": firestore.SERVER_TIMESTAMP,
+        })
+        db.collection('contraceptive_users').document(phone).set({
+            "triage_status": "failed",
+            "latest_triage_job_id": job_ref.id,
+            "triage_error": error_message,
+            "triage_completed_at": firestore.SERVER_TIMESTAMP,
+        }, merge=True)
+        return jsonify({
+            "success": False,
+            "error": "Could not queue triage job. Please try again.",
+            "job_id": job_ref.id,
+        }), 503
+    
+    return jsonify({
+        "success": True,
+        "status": "queued",
+        "job_id": job_ref.id,
+        "poll_url": url_for('api_provider_triage_result', job_id=job_ref.id)
+    }), 202
+
+@app.route("/api/provider/triage_result/<job_id>", methods=['GET'])
+def api_provider_triage_result(job_id):
+    pid = session.get('provider_id')
+    if not pid: return jsonify({"error": "Unauthorized"}), 401
+
+    doc = db.collection('triage_jobs').document(job_id).get()
+    if not doc.exists:
+        return jsonify({"error": "Job not found"}), 404
+
+    result = doc.to_dict()
+    if result.get('assigned_provider_id') != pid:
+        return jsonify({"error": "Forbidden"}), 403
+
+    return jsonify({"success": True, **result})
 
 if __name__ == "__main__":
     # For local dev: default to 8080. For Render: uses the dynamic $PORT.

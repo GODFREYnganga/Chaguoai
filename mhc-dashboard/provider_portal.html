@@ -419,6 +419,49 @@
             }).join('');
         }
 
+        function renderTriageResult(data) {
+            window.lastFhirData = data.fhir_view;
+
+            const rawRec = data.recommendation || data.result || "";
+            document.getElementById('triage-final-result').innerHTML = `
+                <div style="padding: 1.5rem;">
+                    <h3 style="margin-bottom: 1.5rem; color: var(--text);">Matched Contraceptive Options</h3>
+                    <div class="clinical-content" style="color: var(--text); line-height: 1.6;">
+                        ${parseClinicalOutcome(rawRec)}
+                    </div>
+                    
+                    <div style="margin-top: 1.5rem; padding: 1rem; background: #fffaf0; border: 1px solid #feebc8; border-radius: 8px;">
+                        <h5 style="margin:0; font-size:0.75rem; color:#9c4221; text-transform:uppercase;">MEC Clinical Safety Verification</h5>
+                        <p style="font-size: 0.8rem; margin: 0.5rem 0 0 0; color: #7b341e; white-space:pre-wrap;">${data.mec_result || 'Verified against Kenya FP Guidelines'}</p>
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
+                        <button class="btn btn-secondary" style="flex:1; font-size:0.8rem;" onclick="downloadFhir()">Download FHIR Record</button>
+                        <button class="btn btn-secondary" style="flex:1; font-size:0.8rem;" onclick="window.print()">Print Note</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function pollTriageResult(pollUrl, attempts = 0) {
+            if (attempts > 60) {
+                document.getElementById('triage-final-result').innerHTML = '<div class="alert alert-error">The recommendation is still processing. Please refresh this page in a moment.</div>';
+                return;
+            }
+
+            const res = await fetch(pollUrl);
+            const data = await res.json();
+            if (data.status === 'completed') {
+                renderTriageResult(data);
+                return;
+            }
+            if (data.status === 'failed') {
+                document.getElementById('triage-final-result').innerHTML = `<div class="alert alert-error">Data saved, but clinical recommendation failed: ${data.error || 'Unknown error'}</div>`;
+                return;
+            }
+            setTimeout(() => pollTriageResult(pollUrl, attempts + 1), 2000);
+        }
+
         async function submitTriage() {
             document.getElementById('triage-form-container').style.display = 'none';
             document.getElementById('triage-result-container').style.display = 'block';
@@ -429,27 +472,11 @@
                     body: JSON.stringify(triageData)
                 });
                 const data = await res.json();
-                window.lastFhirData = data.fhir_view;
-
-                const rawRec = data.recommendation || data.result || "";
-                document.getElementById('triage-final-result').innerHTML = `
-                    <div style="padding: 1.5rem;">
-                        <h3 style="margin-bottom: 1.5rem; color: var(--text);">Matched Contraceptive Options</h3>
-                        <div class="clinical-content" style="color: var(--text); line-height: 1.6;">
-                            ${parseClinicalOutcome(rawRec)}
-                        </div>
-                        
-                        <div style="margin-top: 1.5rem; padding: 1rem; background: #fffaf0; border: 1px solid #feebc8; border-radius: 8px;">
-                            <h5 style="margin:0; font-size:0.75rem; color:#9c4221; text-transform:uppercase;">MEC Clinical Safety Verification</h5>
-                            <p style="font-size: 0.8rem; margin: 0.5rem 0 0 0; color: #7b341e; white-space:pre-wrap;">${data.mec_result || 'Verified against Kenya FP Guidelines'}</p>
-                        </div>
-
-                        <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
-                            <button class="btn btn-secondary" style="flex:1; font-size:0.8rem;" onclick="downloadFhir()">Download FHIR Record</button>
-                            <button class="btn btn-secondary" style="flex:1; font-size:0.8rem;" onclick="window.print()">Print Note</button>
-                        </div>
-                    </div>
-                `;
+                if ((data.status === 'queued' || data.status === 'processing') && data.poll_url) {
+                    await pollTriageResult(data.poll_url);
+                    return;
+                }
+                renderTriageResult(data);
             } catch (e) { document.getElementById('triage-final-result').innerHTML = '<div class="alert alert-error">Error generating clinical result. Data saved.</div>'; }
         }
 
