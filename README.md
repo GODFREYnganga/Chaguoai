@@ -68,12 +68,23 @@ Render setup:
 - Worker service start command: `python worker.py`
 - Both services must use the same `REDIS_URL`, Firebase credentials, Gemini credentials, and Twilio credentials.
 
-### 7. WhatsApp Interactive Menus
-The WhatsApp flow supports Twilio Content templates for quick replies and list pickers, with numbered text fallback when templates are not configured.
+### 7. WhatsApp Interactive Menus (Buttons)
 
-Recommended Twilio Content templates:
-- `TWILIO_CONTENT_QUICK_REPLY_SID`: a `twilio/quick-reply` template with variables `body`, `option_1`, `option_1_payload`, `option_2`, `option_2_payload`, `option_3`, `option_3_payload`.
-- `TWILIO_CONTENT_LIST_PICKER_SID`: a `twilio/list-picker` template with variables `body`, `button`, `option_1`, `option_1_payload` through the maximum number of rows you intend to support.
+Buttons require **Twilio Content templates** — one template per option count. A 3-button template will **not** work for Yes/No (2 options) or the 5-item main menu.
+
+**Full setup guide:** [mhc-docs/twilio_content_templates.md](mhc-docs/twilio_content_templates.md)
+
+Create these five templates in Twilio Console → Content Template Builder:
+
+| Env variable | Rows/buttons | Used for |
+|--------------|--------------|----------|
+| `TWILIO_CONTENT_QUICK_REPLY_2_SID` | 2 | Q3, Q8, Q9, Q12 (Yes/No) |
+| `TWILIO_CONTENT_QUICK_REPLY_3_SID` | 3 | Q2, Q5, Q7, Q10, Q11 |
+| `TWILIO_CONTENT_LIST_PICKER_4_SID` | 4 | Language menu, Q4, Q9a |
+| `TWILIO_CONTENT_LIST_PICKER_5_SID` | 5 | Main menu, Q13 |
+| `TWILIO_CONTENT_LIST_PICKER_7_SID` | 7 | Q6 health conditions |
+
+On startup, the server logs which templates are set vs missing. If a template is missing, that question falls back to numbered text (reply `1`, `2`, etc.).
 
 Main WhatsApp menu:
 ```text
@@ -84,7 +95,9 @@ Main WhatsApp menu:
 5. Change Language
 ```
 
-Single-choice survey questions use quick replies when they have 2-3 options and list pickers when they have 4+ options. Multi-select clinical questions (health conditions, methods to avoid) use list pickers with a numbered-reply fallback for multiple selections.
+Single-choice survey questions use quick replies when they have 2-3 options and list pickers when they have 4+ options. Multi-select questions (Q6, Q13) use list pickers; reply with numbers like `1,3` for multiple selections.
+
+See also: [mhc-docs/twilio_setup.md](mhc-docs/twilio_setup.md) for webhook/ngrok setup.
 
 ## Project Structure
 

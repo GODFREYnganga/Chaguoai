@@ -26,9 +26,11 @@ from user_profile_mapper import (
     format_survey_context_for_llm,
     map_firestore_user_to_profile,
 )
+from twilio_templates import TwilioTemplateRegistry
 from whatsapp_helpers import (
     send_long_whatsapp_message,
     send_options_message,
+    send_twilio_content,
     split_message_at_sentences,
 )
 
@@ -120,8 +122,19 @@ def format_to_e164(phone, country_code="+254"):
 
 # Globals
 TWILIO_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886')
-TWILIO_CONTENT_QUICK_REPLY_SID = os.environ.get('TWILIO_CONTENT_QUICK_REPLY_SID')
-TWILIO_CONTENT_LIST_PICKER_SID = os.environ.get('TWILIO_CONTENT_LIST_PICKER_SID')
+TWILIO_TEMPLATES = TwilioTemplateRegistry.from_env()
+
+def _log_whatsapp_template_status():
+    status = TWILIO_TEMPLATES.status_report()
+    print(f"[WhatsApp Templates] {' '.join(f'{k}={v}' for k, v in status.items())}")
+    missing = TWILIO_TEMPLATES.missing_for_survey()
+    if missing:
+        print("[WhatsApp Templates] Missing SIDs — some questions will use text menus:")
+        for item in missing:
+            print(f"  - {item}")
+        print("  See mhc-docs/twilio_content_templates.md for setup steps.")
+
+_log_whatsapp_template_status()
 
 MAIN_MENU_OPTIONS = {
     "english": ["Method Match", "Ask Question", "Myths & Facts", "Report Side Effects", "Change Language"],
@@ -191,23 +204,16 @@ def send_whatsapp_message(from_number, to_number, body_text, media_url=None):
     else:
         send_long_whatsapp_message(_send_single, from_number, to_number, body_text)
 
-def _send_twilio_content(from_number, to_number, content_sid, variables):
-    twilio_client = _get_twilio_client()
-    if not twilio_client or not content_sid:
-        return False
-
-    from_number, to_number = _ensure_whatsapp_prefix(from_number, to_number)
-    try:
-        twilio_client.messages.create(
-            from_=from_number,
-            to=to_number,
-            content_sid=content_sid,
-            content_variables=json.dumps(variables)
-        )
-        return True
-    except Exception as e:
-        print(f"Twilio Content Error: {e}")
-        return False
+def _send_twilio_content(from_number, to_number, content_sid, variables, *, option_count=0, mode=""):
+    return send_twilio_content(
+        _get_twilio_client,
+        from_number,
+        to_number,
+        content_sid,
+        variables,
+        option_count=option_count,
+        mode=mode,
+    )
 
 def send_whatsapp_buttons(from_number, to_number, body_text, buttons):
     send_whatsapp_options(from_number, to_number, body_text, buttons)
@@ -217,8 +223,7 @@ def send_whatsapp_options(from_number, to_number, body_text, options, multi_sele
         ensure_prefix=_ensure_whatsapp_prefix,
         send_plain=send_whatsapp_message,
         send_content=_send_twilio_content,
-        quick_reply_sid=TWILIO_CONTENT_QUICK_REPLY_SID,
-        list_picker_sid=TWILIO_CONTENT_LIST_PICKER_SID,
+        template_registry=TWILIO_TEMPLATES,
         from_number=from_number,
         to_number=to_number,
         body_text=body_text,

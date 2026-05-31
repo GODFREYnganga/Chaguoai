@@ -53,3 +53,11 @@ If everything is set up correctly:
 2. Twilio forwards it to your Ngrok URL.
 3. Ngrok routes it to your local Flask app (`main.py`).
 4. `main.py` processes the message and sends a response back through Twilio to your phone!
+
+## Step 7: Enable Interactive Buttons (Required for Menus)
+
+Plain text works without this step, but **tappable buttons** need Twilio Content templates.
+
+See **[twilio_content_templates.md](./twilio_content_templates.md)** — create 5 templates (2-button, 3-button, 4-row, 5-row, 7-row list) and add the Content SIDs to `.env`.
+
+Restart `python main.py` and confirm the startup log shows all templates as `set`.

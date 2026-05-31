@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 import time
 
+from twilio_templates import TwilioTemplateRegistry
+
 WHATSAPP_BODY_LIMIT = 1500
 QUICK_REPLY_LABEL_LIMIT = 20
 LIST_ROW_LABEL_LIMIT = 24
@@ -68,14 +70,22 @@ def build_twilio_content_variables(
     *,
     button_text: str = "Choose",
     quick_reply: bool = False,
+    template_slots: int | None = None,
 ) -> dict:
+    """Build variables matching the exact slot count the Twilio template expects."""
     truncate = truncate_quick_reply_label if quick_reply else truncate_list_row_label
+    slot_count = template_slots if template_slots is not None else len(options)
     variables = {"body": body_text[:WHATSAPP_BODY_LIMIT]}
     if not quick_reply:
         variables["button"] = truncate_list_row_label(button_text, 20)
-    for i, option in enumerate(options, start=1):
-        variables[f"option_{i}"] = truncate(option)
-        variables[f"option_{i}_payload"] = str(i)
+    for i in range(1, slot_count + 1):
+        if i <= len(options):
+            variables[f"option_{i}"] = truncate(options[i - 1])
+            variables[f"option_{i}_payload"] = str(i)
+        else:
+            # Pad unused slots when falling back to a larger legacy template
+            variables[f"option_{i}"] = truncate(f"Option {i}")
+            variables[f"option_{i}_payload"] = str(i)
     return variables
 
 
@@ -90,11 +100,23 @@ def fallback_option_message(body_text: str, options: list[str], *, multi_select:
     return menu_body
 
 
-def send_twilio_content(twilio_client_factory, from_number: str, to_number: str, content_sid: str, variables: dict) -> bool:
+def send_twilio_content(
+    twilio_client_factory,
+    from_number: str,
+    to_number: str,
+    content_sid: str,
+    variables: dict,
+    *,
+    option_count: int = 0,
+    mode: str = "",
+) -> bool:
     if not content_sid:
         return False
+    client = twilio_client_factory()
+    if not client:
+        return False
     try:
-        twilio_client_factory().messages.create(
+        client.messages.create(
             from_=from_number,
             to=to_number,
             content_sid=content_sid,
@@ -102,7 +124,9 @@ def send_twilio_content(twilio_client_factory, from_number: str, to_number: str,
         )
         return True
     except Exception as exc:
-        print(f"Twilio Content Error: {exc}")
+        print(
+            f"Twilio Content Error ({option_count} options, {mode}, SID={content_sid}): {exc}"
+        )
         return False
 
 
@@ -111,44 +135,75 @@ def send_options_message(
     ensure_prefix,
     send_plain,
     send_content,
-    quick_reply_sid: str | None,
-    list_picker_sid: str | None,
+    template_registry: TwilioTemplateRegistry,
     from_number: str,
     to_number: str,
     body_text: str,
     options: list[str],
     multi_select: bool = False,
     button_text: str = "Choose",
-    inter_message_delay: float = 0.4,
 ) -> None:
     """
-    Send interactive WhatsApp options. Tries Twilio Content templates first,
-    then falls back to numbered text menus.
+    Send interactive WhatsApp options using size-matched Twilio Content templates.
+    Falls back to numbered text if templates are missing or misconfigured.
     """
     from_number, to_number = ensure_prefix(from_number, to_number)
     options = [str(o) for o in options if str(o).strip()]
-
-    if multi_select:
-        body = fallback_option_message(body_text, options, multi_select=True)
-        if len(options) <= 10 and list_picker_sid:
-            variables = build_twilio_content_variables(body_text, options, button_text=button_text)
-            if send_content(from_number, to_number, list_picker_sid, variables):
-                send_plain(from_number, to_number, "_Tip: You can also reply with numbers like 1,3 for multiple selections._")
-                return
-        send_plain(from_number, to_number, body)
+    if not options:
+        send_plain(from_number, to_number, body_text)
         return
 
-    if len(options) <= 3 and quick_reply_sid:
-        variables = build_twilio_content_variables(body_text, options[:3], quick_reply=True)
-        if send_content(from_number, to_number, quick_reply_sid, variables):
+    content_sid, mode, template_slots = template_registry.resolve(len(options))
+
+    if content_sid:
+        variables = build_twilio_content_variables(
+            body_text,
+            options,
+            button_text=button_text,
+            quick_reply=(mode == "quick_reply"),
+            template_slots=template_slots,
+        )
+
+        def _send(sid, vars_, count, send_mode):
+            return send_content(
+                from_number,
+                to_number,
+                sid,
+                vars_,
+                option_count=count,
+                mode=send_mode,
+            )
+
+        if _send(content_sid, variables, len(options), mode):
+            if multi_select:
+                send_plain(
+                    from_number,
+                    to_number,
+                    "_Tip: For multiple selections, reply with numbers like 1,3._",
+                )
             return
 
-    if list_picker_sid:
-        variables = build_twilio_content_variables(body_text, options, button_text=button_text)
-        if send_content(from_number, to_number, list_picker_sid, variables):
-            return
+        # Exact template failed — try list picker as secondary path for 2–3 option questions
+        if mode == "quick_reply" and len(options) <= 3:
+            list_sid, list_mode, list_slots = template_registry.resolve(max(len(options), 4))
+            if list_sid and list_sid != content_sid:
+                list_vars = build_twilio_content_variables(
+                    body_text,
+                    options,
+                    button_text=button_text,
+                    quick_reply=False,
+                    template_slots=list_slots,
+                )
+                if _send(list_sid, list_vars, len(options), list_mode):
+                    if multi_select:
+                        send_plain(
+                            from_number,
+                            to_number,
+                            "_Tip: For multiple selections, reply with numbers like 1,3._",
+                        )
+                    return
 
-    send_plain(from_number, to_number, fallback_option_message(body_text, options))
+    send_plain(from_number, to_number, fallback_option_message(body_text, options, multi_select=multi_select))
 
 
 def send_long_whatsapp_message(send_plain, from_number: str, to_number: str, body_text: str) -> None:
