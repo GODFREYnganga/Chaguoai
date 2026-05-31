@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 
 from ussd_logic import handle_ussd_request
-from who_mec_engine import UserProfile, run_mec_assessment, format_mec_result_for_llm
+from who_mec_engine import run_mec_assessment, format_mec_result_for_llm
 from rag_ingestor import get_retriever
 from rag_prompt import build_system_prompt, format_user_profile_for_prompt
 from task_queue import (
@@ -20,6 +20,16 @@ from task_queue import (
     TRIAGE_JOB_RESULT_TTL_SECONDS,
     TRIAGE_JOB_TIMEOUT_SECONDS,
     get_triage_queue,
+)
+from user_profile_mapper import (
+    build_method_match_user_message,
+    format_survey_context_for_llm,
+    map_firestore_user_to_profile,
+)
+from whatsapp_helpers import (
+    send_long_whatsapp_message,
+    send_options_message,
+    split_message_at_sentences,
 )
 
 load_dotenv()
@@ -123,6 +133,19 @@ MAIN_MENU_OPTIONS = {
 LANGUAGE_OPTIONS = ["English", "Kiswahili", "Francais", "Portugues"]
 HEALTH_CONDITION_OPTIONS = ["High blood pressure", "Diabetes", "Heart disease", "Liver problem", "Cancer", "Migraines", "None"]
 METHOD_AVOID_OPTIONS = ["Pills", "Injectables", "IUD", "Implants", "None"]
+CHILDREN_COUNT_OPTIONS = ["0", "1", "2", "3 or more"]
+YES_NO_OPTIONS = {
+    "english": ["Yes", "No"],
+    "swahili": ["Ndio", "Hapana"],
+    "french": ["Oui", "Non"],
+    "portuguese": ["Sim", "Não"],
+}
+PARTNER_SUPPORT_OPTIONS = {
+    "english": ["Yes", "No", "No partner"],
+    "swahili": ["Ndio", "Hapana", "Sina mpenzi"],
+    "french": ["Oui", "Non", "Pas de partenaire"],
+    "portuguese": ["Sim", "Não", "Sem parceiro"],
+}
 
 def get_user_state(phone):
     doc = db.collection('contraceptive_users').document(phone).get()
@@ -130,34 +153,12 @@ def get_user_state(phone):
         return doc.to_dict()
     return None
 
-def send_whatsapp_message(from_number, to_number, body_text, media_url=None):
+def _get_twilio_client():
     account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
     auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
-    
     if not account_sid or not auth_token:
-        print("Missing Twilio Auth credentials in environment!")
-        return
-
-    # Automatically handle channel prefixing for WhatsApp
-    # Twilio requires both from and to to have the 'whatsapp:' prefix
-    if from_number.startswith('whatsapp:') and not to_number.startswith('whatsapp:'):
-        to_number = f"whatsapp:{to_number}"
-    elif not from_number.startswith('whatsapp:') and to_number.startswith('whatsapp:'):
-        from_number = f"whatsapp:{from_number}"
-
-    twilio_client = TwilioClient(account_sid, auth_token)
-    try:
-        twilio_client.messages.create(
-            from_=from_number,
-            body=body_text[:1500],
-            to=to_number,
-            media_url=[media_url] if media_url else None
-        )
-    except Exception as e:
-        print(f"Twilio Error: {e}")
-
-def send_whatsapp_buttons(from_number, to_number, body_text, buttons):
-    send_whatsapp_options(from_number, to_number, body_text, buttons)
+        return None
+    return TwilioClient(account_sid, auth_token)
 
 def _ensure_whatsapp_prefix(from_number, to_number):
     if from_number.startswith('whatsapp:') and not to_number.startswith('whatsapp:'):
@@ -166,29 +167,38 @@ def _ensure_whatsapp_prefix(from_number, to_number):
         from_number = f"whatsapp:{from_number}"
     return from_number, to_number
 
-def _fallback_option_message(body_text, options, multi_select=False):
-    menu_body = f"{body_text}\n\n"
-    for i, option in enumerate(options, start=1):
-        menu_body += f"{i}. *{option}*\n"
-    if multi_select:
-        menu_body += "\nReply with one or more numbers, for example 1,2. Use the None option alone."
-    else:
-        menu_body += "\nReply with a number or tap an option."
-    return menu_body
+def send_whatsapp_message(from_number, to_number, body_text, media_url=None):
+    twilio_client = _get_twilio_client()
+    if not twilio_client:
+        print("Missing Twilio Auth credentials in environment!")
+        return
 
-def _truncate_option(text, limit=20):
-    text = str(text).strip()
-    return text if len(text) <= limit else text[:limit - 1].rstrip() + "..."
+    from_number, to_number = _ensure_whatsapp_prefix(from_number, to_number)
+
+    def _send_single(from_num, to_num, text):
+        try:
+            twilio_client.messages.create(
+                from_=from_num,
+                body=split_message_at_sentences(text, 1500)[0],
+                to=to_num,
+                media_url=[media_url] if media_url else None
+            )
+        except Exception as e:
+            print(f"Twilio Error: {e}")
+
+    if media_url or len(body_text) <= 1500:
+        _send_single(from_number, to_number, body_text)
+    else:
+        send_long_whatsapp_message(_send_single, from_number, to_number, body_text)
 
 def _send_twilio_content(from_number, to_number, content_sid, variables):
-    account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
-    auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
-    if not account_sid or not auth_token or not content_sid:
+    twilio_client = _get_twilio_client()
+    if not twilio_client or not content_sid:
         return False
 
     from_number, to_number = _ensure_whatsapp_prefix(from_number, to_number)
     try:
-        TwilioClient(account_sid, auth_token).messages.create(
+        twilio_client.messages.create(
             from_=from_number,
             to=to_number,
             content_sid=content_sid,
@@ -199,35 +209,26 @@ def _send_twilio_content(from_number, to_number, content_sid, variables):
         print(f"Twilio Content Error: {e}")
         return False
 
-def send_whatsapp_quick_replies(from_number, to_number, body_text, options):
-    variables = {"body": body_text}
-    for i, option in enumerate(options[:3], start=1):
-        variables[f"option_{i}"] = _truncate_option(option)
-        variables[f"option_{i}_payload"] = str(i)
+def send_whatsapp_buttons(from_number, to_number, body_text, buttons):
+    send_whatsapp_options(from_number, to_number, body_text, buttons)
 
-    if len(options) <= 3 and _send_twilio_content(from_number, to_number, TWILIO_CONTENT_QUICK_REPLY_SID, variables):
-        return
-
-    send_whatsapp_message(from_number, to_number, _fallback_option_message(body_text, options))
+def send_whatsapp_options(from_number, to_number, body_text, options, multi_select=False, button_text="Choose"):
+    send_options_message(
+        ensure_prefix=_ensure_whatsapp_prefix,
+        send_plain=send_whatsapp_message,
+        send_content=_send_twilio_content,
+        quick_reply_sid=TWILIO_CONTENT_QUICK_REPLY_SID,
+        list_picker_sid=TWILIO_CONTENT_LIST_PICKER_SID,
+        from_number=from_number,
+        to_number=to_number,
+        body_text=body_text,
+        options=options,
+        multi_select=multi_select,
+        button_text=button_text,
+    )
 
 def send_whatsapp_list_picker(from_number, to_number, body_text, options, button_text="Choose"):
-    variables = {"body": body_text, "button": button_text}
-    for i, option in enumerate(options, start=1):
-        variables[f"option_{i}"] = str(option)
-        variables[f"option_{i}_payload"] = str(i)
-
-    if _send_twilio_content(from_number, to_number, TWILIO_CONTENT_LIST_PICKER_SID, variables):
-        return
-
-    send_whatsapp_message(from_number, to_number, _fallback_option_message(body_text, options))
-
-def send_whatsapp_options(from_number, to_number, body_text, options, multi_select=False):
-    if multi_select:
-        send_whatsapp_message(from_number, to_number, _fallback_option_message(body_text, options, multi_select=True))
-    elif len(options) <= 3:
-        send_whatsapp_quick_replies(from_number, to_number, body_text, options)
-    else:
-        send_whatsapp_list_picker(from_number, to_number, body_text, options)
+    send_whatsapp_options(from_number, to_number, body_text, options, button_text=button_text)
 
 def extract_whatsapp_reply(form):
     return (
@@ -253,7 +254,8 @@ def send_main_menu(from_number, to_number, lang, greeting=None):
     menu_text = s["menu"]
     if greeting:
         menu_text = f"{greeting}{menu_text}"
-    send_whatsapp_list_picker(from_number, to_number, menu_text, MAIN_MENU_OPTIONS.get(lang, MAIN_MENU_OPTIONS["english"]), "Menu")
+    menu_options = MAIN_MENU_OPTIONS.get(lang, MAIN_MENU_OPTIONS["english"])
+    send_whatsapp_list_picker(from_number, to_number, menu_text, menu_options, "Menu")
 
 def send_language_menu(from_number, to_number):
     send_whatsapp_list_picker(
@@ -563,21 +565,21 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
 
         if stage == "AWAITING_Q2_PERIOD":
             db.collection('contraceptive_users').document(user_phone).update({"last_period": incoming_msg.strip(), "stage": "AWAITING_Q3_BABY"})
-            send_whatsapp_buttons(to_number, user_phone, q["q3"], q["q3_options"])
+            send_whatsapp_buttons(to_number, user_phone, q["q3"], YES_NO_OPTIONS.get(lang, YES_NO_OPTIONS["english"]))
             return
 
         if stage == "AWAITING_Q3_BABY":
             is_yes = any(word in incoming_msg.lower() for word in ['ndio', 'yes', 'oui', 'sim', '1'])
             db.collection('contraceptive_users').document(user_phone).update({"baby_under_6m": incoming_msg.strip(), "stage": "AWAITING_Q3A_BREASTFEEDING" if is_yes else "AWAITING_Q4_CHILDREN"})
             if is_yes:
-                send_whatsapp_buttons(to_number, user_phone, q["q3a"], q["q3_options"])
+                send_whatsapp_buttons(to_number, user_phone, q["q3a"], YES_NO_OPTIONS.get(lang, YES_NO_OPTIONS["english"]))
             else:
-                send_whatsapp_message(to_number, user_phone, q["q4"])
+                send_whatsapp_buttons(to_number, user_phone, q["q4"], CHILDREN_COUNT_OPTIONS)
             return
 
         if stage == "AWAITING_Q3A_BREASTFEEDING":
             db.collection('contraceptive_users').document(user_phone).update({"breastfeeding_only": incoming_msg.strip(), "stage": "AWAITING_Q4_CHILDREN"})
-            send_whatsapp_message(to_number, user_phone, q["q4"])
+            send_whatsapp_buttons(to_number, user_phone, q["q4"], CHILDREN_COUNT_OPTIONS)
             return
  
         if stage == "AWAITING_Q4_CHILDREN":
@@ -587,7 +589,7 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
  
         if stage == "AWAITING_Q5_MORE_CHILDREN":
             db.collection('contraceptive_users').document(user_phone).update({"more_children": incoming_msg.strip(), "stage": "AWAITING_Q6_HEALTH"})
-            send_whatsapp_options(to_number, user_phone, question_body(q["q6"]), HEALTH_CONDITION_OPTIONS, multi_select=True)
+            send_whatsapp_options(to_number, user_phone, question_body(q["q6"]), HEALTH_CONDITION_OPTIONS, multi_select=True, button_text="Conditions")
             return
  
         if stage == "AWAITING_Q6_HEALTH":
@@ -597,12 +599,12 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
 
         if stage == "AWAITING_Q7_HIV":
             db.collection('contraceptive_users').document(user_phone).update({"hiv_status": incoming_msg.strip(), "stage": "AWAITING_Q8_SMOKE"})
-            send_whatsapp_buttons(to_number, user_phone, q["q8"], q["q3_options"])
+            send_whatsapp_buttons(to_number, user_phone, q["q8"], YES_NO_OPTIONS.get(lang, YES_NO_OPTIONS["english"]))
             return
 
         if stage == "AWAITING_Q8_SMOKE":
             db.collection('contraceptive_users').document(user_phone).update({"smoke": incoming_msg.strip(), "stage": "AWAITING_Q9_PREVIOUS_USE"})
-            send_whatsapp_buttons(to_number, user_phone, q["q9"], q["q3_options"])
+            send_whatsapp_buttons(to_number, user_phone, q["q9"], YES_NO_OPTIONS.get(lang, YES_NO_OPTIONS["english"]))
             return
 
         if stage == "AWAITING_Q9_PREVIOUS_USE":
@@ -611,12 +613,12 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
             if is_yes:
                 send_whatsapp_buttons(to_number, user_phone, q["q9a"], q["q9a_options"])
             else:
-                send_whatsapp_buttons(to_number, user_phone, q["q10"], q["q3_options"] + ([ "Sina mpenzi" ] if lang=="swahili" else ["No partner"]))
+                send_whatsapp_buttons(to_number, user_phone, q["q10"], PARTNER_SUPPORT_OPTIONS.get(lang, PARTNER_SUPPORT_OPTIONS["english"]))
             return
 
         if stage == "AWAITING_Q9A_STOP":
             db.collection('contraceptive_users').document(user_phone).update({"stop_reason": incoming_msg.strip(), "stage": "AWAITING_Q10_PARTNER"})
-            send_whatsapp_buttons(to_number, user_phone, q["q10"], q["q3_options"] + ([ "Sina mpenzi" ] if lang=="swahili" else ["No partner"]))
+            send_whatsapp_buttons(to_number, user_phone, q["q10"], PARTNER_SUPPORT_OPTIONS.get(lang, PARTNER_SUPPORT_OPTIONS["english"]))
             return
 
         if stage == "AWAITING_Q10_PARTNER":
@@ -626,21 +628,24 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
 
         if stage == "AWAITING_Q11_FACILITY":
             db.collection('contraceptive_users').document(user_phone).update({"facility_access": incoming_msg.strip(), "stage": "AWAITING_Q12_STI"})
-            send_whatsapp_buttons(to_number, user_phone, q["q12"], q["q3_options"])
+            send_whatsapp_buttons(to_number, user_phone, q["q12"], YES_NO_OPTIONS.get(lang, YES_NO_OPTIONS["english"]))
             return
 
         if stage == "AWAITING_Q12_STI":
             db.collection('contraceptive_users').document(user_phone).update({"sti_concern": incoming_msg.strip(), "stage": "AWAITING_Q13_PREFERENCES"})
-            send_whatsapp_options(to_number, user_phone, question_body(q["q13"]), METHOD_AVOID_OPTIONS, multi_select=True)
+            send_whatsapp_options(to_number, user_phone, question_body(q["q13"]), METHOD_AVOID_OPTIONS, multi_select=True, button_text="Methods")
             return
 
         if stage == "AWAITING_Q13_PREFERENCES":
-            # Just Finished Survey 
-            db.collection('contraceptive_users').document(user_phone).update({"prefer_not_to_use": incoming_msg.strip(), "registered_at": firestore.SERVER_TIMESTAMP, "stage": "REGISTERED"})
+            db.collection('contraceptive_users').document(user_phone).update({
+                "prefer_not_to_use": incoming_msg.strip(),
+                "registered_at": firestore.SERVER_TIMESTAMP,
+                "stage": "REGISTERED",
+                "method_match_pending": True,
+            })
             send_whatsapp_message(to_number, user_phone, q["finished"])
-            incoming_msg = "Please analyze my answers and generate my ideal Method Match based on WHO MEC criteria."
-            # REFRESH STATE for fall-through
             user = get_user_state(user_phone)
+            incoming_msg = build_method_match_user_message(user, lang)
             stage = "REGISTERED"
 
         
@@ -669,64 +674,37 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
             print(f"\n==========================================")
             print(f"[{user_phone}] AI Processing...")
             
-            # 1. Fetch User Data for Context
             is_registered = (user.get("stage") == "REGISTERED")
+            is_method_match = bool(user.get("method_match_pending")) or incoming_msg.startswith("The client") or incoming_msg.startswith("Mteja") or incoming_msg.startswith("La cliente") or incoming_msg.startswith("A cliente")
             user_lang = user.get('language', 'english')
             
-            # 2. Build Profile (if registered)
             mec_text = "[User not yet registered for Method Match]"
             prof_summary = "[No clinical profile available]"
             
             if is_registered:
-                prof = UserProfile()
-                prof.age_years = user.get('age')
-                # (mapping logic as before...)
-                lp = str(user.get('last_period', '')).lower()
-                if '3' in lp or 'pregnant' in lp or 'mimba' in lp: prof.pregnancy_status = 'pregnant'
-                bb = str(user.get('baby_under_6m', '')).lower()
-                if '1' in bb or 'yes' in bb or 'ndio' in bb:
-                    prof.postpartum_days = 90
-                    bfo = str(user.get('breastfeeding_only', '')).lower()
-                    if '1' in bfo or 'yes' in bfo or 'ndio' in bfo:
-                        prof.breastfeeding = True
-                        prof.breastfeeding_exclusively = True
-                        prof.baby_age_months = 3.0
-                
-                hc = str(user.get('health_conditions', ''))
-                if '1' in hc: prof.hypertension = True
-                if '2' in hc: prof.diabetes = True
-                if '3' in hc: prof.heart_disease = True
-                if '4' in hc: prof.liver_disease = True
-                if '5' in hc: prof.breast_cancer_current = True
-                if '6' in hc: prof.migraine_without_aura = True
-                
+                prof = map_firestore_user_to_profile(user)
                 mec_result = run_mec_assessment(prof)
-                mec_text = format_mec_result_for_llm(mec_result, language='swahili')
+                mec_text = format_mec_result_for_llm(mec_result, language=user_lang)
                 prof_dict = {k: v for k, v in prof.__dict__.items() if v is not None}
                 prof_summary = format_user_profile_for_prompt(prof_dict)
+                prof_summary = f"{prof_summary}\n\n{format_survey_context_for_llm(user)}"
             
-            # 3. RAG Retrieval
             retriever = get_retriever()
             
-            # Cross-lingual Fix: If the user is speaking Swahili/French/Portuguese, 
-            # we should search the English guidelines using an English query for better recall.
             search_query = incoming_msg
-            if user_lang != 'english' and not incoming_msg.startswith("Please analyze"):
+            if user_lang != 'english' and not is_method_match:
                 try:
-                    # Quick translation for search optimization
                     search_query = generate_gemini_text(
                         f"You are a medical search optimizer. Translate this user sexual health query into ONLY 3-6 English medical keywords for a textbook search. Output ONLY the words, no explanation. Query: {incoming_msg}",
                         max_output_tokens=80
                     ).strip()
-                    # Strip any "Keywords:" prefix if Gemini adds it
                     search_query = re.sub(r'^(Keywords|Search|Keywords:)\s*', '', search_query, flags=re.IGNORECASE)
                     print(f"[{user_phone}] Translated search query: {search_query}")
                 except Exception as e:
                     print(f"[{user_phone}] Translation failed, falling back to original: {e}")
             
-            # If it's a "Match My Method" analysis, use a broader search
-            if incoming_msg.startswith("Please analyze"):
-                search_query = "Instruction and description of contraceptive methods for selection"
+            if is_method_match:
+                search_query = "WHO MEC contraceptive method recommendation implant IUD injectable pill eligibility"
 
             chunks = retriever.retrieve(search_query, top_k=4, country_scope='kenya')
             print(f"[{user_phone}] Retrieved {len(chunks)} chunks for context.")
@@ -735,7 +713,6 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
             
             context_str = retriever.format_context_for_llm(chunks)
             
-            # 4. Prompt & Generation
             sys_prompt = build_system_prompt(
                 mec_result_text=mec_text,
                 retrieved_context=context_str,
@@ -745,17 +722,20 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
                 user_name=user.get('name', '')
             )
             
-            reply_text = generate_gemini_text(f"{sys_prompt}\n\nUser Message: {incoming_msg}")
+            max_tokens = 650 if is_method_match else GEMINI_MAX_OUTPUT_TOKENS
+            reply_text = generate_gemini_text(f"{sys_prompt}\n\nUser Message: {incoming_msg}", max_output_tokens=max_tokens)
             
-            # 5. Send Response
-            send_whatsapp_message(to_number, user_phone, reply_text)
+            send_long_whatsapp_message(send_whatsapp_message, to_number, user_phone, reply_text)
             
-            # 6. Update DB if it was a match completion
-            if incoming_msg.startswith("Please analyze"):
-                 db.collection('contraceptive_users').document(user_phone).update({
+            update_fields = {}
+            if is_method_match:
+                update_fields = {
                     'matched_method': reply_text.strip(),
-                    'latest_mec_text': mec_text
-                })
+                    'latest_mec_text': mec_text,
+                    'method_match_pending': False,
+                    'stage': 'MAIN_MENU',
+                }
+            db.collection('contraceptive_users').document(user_phone).update(update_fields) if update_fields else None
             
             print(f"[{user_phone}] Success!")
             print(f"==========================================\n")
@@ -922,16 +902,49 @@ def api_provider_me():
     if not doc.exists: return jsonify({"error": "Not Found"}), 404
     return jsonify(doc.to_dict())
 
+def serialize_firestore_value(value):
+    """Convert Firestore types to JSON-safe values for dashboard APIs."""
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    if hasattr(value, "timestamp"):
+        try:
+            return datetime.datetime.utcfromtimestamp(value.timestamp()).isoformat() + "Z"
+        except Exception:
+            pass
+    if isinstance(value, dict):
+        return {k: serialize_firestore_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [serialize_firestore_value(v) for v in value]
+    return value
+
+def extract_method_snippet(text, limit=120):
+    if not text:
+        return "Pending"
+    cleaned = re.sub(r"\s+", " ", str(text)).strip()
+    match = re.search(r"\*([^*]+)\*", cleaned)
+    if match:
+        return match.group(1).strip()[:limit]
+    for keyword in ("Implant", "IUD", "Injection", "Pill", "Condom", "Injectable", "DIU"):
+        if keyword.lower() in cleaned.lower():
+            return keyword
+    return cleaned[:limit] + ("…" if len(cleaned) > limit else "")
+
 @app.route("/api/provider/roster", methods=['GET'])
 def api_provider_roster():
     pid = session.get('provider_id')
     if not pid: return jsonify({"error": "Unauthorized"}), 401
     
     users = []
-    # Strictly filter by the provider's ID using modern FieldFilter
     for doc in db.collection('contraceptive_users').where(filter=firestore.FieldFilter('assigned_provider_id', '==', pid)).stream():
-        u = doc.to_dict()
+        u = serialize_firestore_value(doc.to_dict())
         u['id'] = doc.id
+        u['method_snippet'] = extract_method_snippet(u.get('matched_method') or u.get('latest_recommendation'))
+        u['registered_at'] = serialize_firestore_value(u.get('registered_at'))
         users.append(u)
     return jsonify({"clients": users})
 
@@ -945,24 +958,24 @@ def api_provider_mec_query():
     if not query: return jsonify({"error": "Query required"}), 400
     
     try:
-        # Search clinical guidelines specifically for clinician queries
         retriever = get_retriever()
         chunks = retriever.retrieve(query, top_k=5)
         context = retriever.format_context_for_llm(chunks)
         
-        # Specialized prompt for clinicians ensuring authoritative citations
-        prompt = (
-            f"You are a Senior Clinical Consultant for the Kenya National Family Planning Program.\n"
-            f"Analyze the following clinician query using the provided guideline context.\n"
-            f"Your response must include:\n"
-            f"1. MEC Category (1-4) for the specific method(s) discussed.\n"
-            f"2. Precise clinical rationale.\n"
-            f"3. Citations (Page numbers from Kenya FP Guidelines or WHO MEC).\n\n"
-            f"Context:\n{context}\n\n"
-            f"Clinician Query: {query}"
+        sys_prompt = build_system_prompt(
+            mec_result_text="[Clinician query — apply WHO MEC categories to the methods discussed in the question.]",
+            retrieved_context=context,
+            user_profile_summary=f"Clinician portal query from provider {pid}.",
+            channel="web",
+            language="english",
+        )
+        full_prompt = (
+            f"{sys_prompt}\n\nClinician Query: {query}\n\n"
+            "IMPORTANT: You MUST output 1-3 recommended methods using [METHOD_CARD] blocks "
+            "with NAME, SUMMARY, and DETAILS fields. Include MEC category and citations."
         )
         
-        response_text = generate_gemini_text(prompt, max_output_tokens=900)
+        response_text = generate_gemini_text(full_prompt, max_output_tokens=900)
         return jsonify({"success": True, "response": response_text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

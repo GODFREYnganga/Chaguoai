@@ -251,7 +251,7 @@ _CLINICAL_MANDATE_BLOCK = """
 CRITICAL CLINICAL SAFETY RULES — THESE OVERRIDE EVERYTHING ELSE:
 
 Rule 1 — MEC COMPLIANCE:
-If a user profile is provided in Section B, you MUST ONLY recommend methods listed under "METHODS SAFE TO RECOMMEND". If a user profile is NOT yet provided (e.g. they haven't done the survey), you MUST NOT give a specific prescription. Instead, provide a supportive overview of common methods (Pills, Implants, IUDs) to educate them, and then invite them to start the "Match My Method" survey for a personalized clinical assessment.
+If a user profile is provided in Section A and the survey status shows COMPLETE, you MUST recommend specific methods from "METHODS SAFE TO RECOMMEND" in Section B. Name each method clearly (implant, IUD, injection, pill, etc.). If a user profile is NOT yet provided, do NOT give a specific prescription — provide a supportive overview and invite them to start Method Match.
 
 Rule 2 — NO FABRICATION or IMMEDIATE REFERRAL:
 Every clinical claim must come from Section C. If Section C does not answer the question, do NOT simply say "I don't know, go to the hospital." Use your medical persona to explain the general concepts of birth planning, and then lead the user toward our structured intake survey so we can understand them better and provide a grounded recommendation.
@@ -493,7 +493,9 @@ def _get_channel_instruction(channel: str) -> str:
             "- Use *bold* for method names and important warnings\n"
             "- Use numbered lists for steps\n"
             "- Use bullet points (•) for lists of side effects or options\n"
-            "- Keep total response under 800 words\n"
+            "- Keep total response under 450 words unless the user explicitly asks for more detail\n"
+            "- NEVER cut off mid-sentence — finish every sentence you start\n"
+            "- For Method Match completions: name 2-3 specific methods; lead with #1 in *bold*\n"
             "- Use emojis sparingly and only if they add clarity:\n"
             "  ✅ for safe/recommended, ⚠️ for warnings, 🏥 for provider visits\n"
             "- Leave a blank line between sections for readability"

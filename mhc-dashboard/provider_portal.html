@@ -114,12 +114,13 @@
                                 <th>Client Name</th>
                                 <th>Phone</th>
                                 <th>Registered</th>
+                                <th>Recommendation</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
                         <tbody id="chw-roster-table">
                             <tr>
-                                <td colspan="4" class="text-center">Loading roster...</td>
+                                <td colspan="5" class="text-center">Loading roster...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -382,9 +383,7 @@
         function parseClinicalOutcome(rawRec) {
             if (!rawRec) return "";
 
-            // 1. Transformation: Replace [METHOD_CARD]...[/METHOD_CARD] with interactive HTML
             const cardRegex = /\[\s*METHOD_CARD\s*\]([\s\S]*?)\[\s*\/\s*METHOD_CARD\s*\]/gi;
-
             let formattedBody = rawRec.replace(cardRegex, (match, content) => {
                 const name = (content.match(/(?:\*|#)*\s*NAME[:\*]*\s*(.*)/i) || ["", "Method Option"])[1].replace(/[\*#]/g, '').trim();
                 const summary = (content.match(/(?:\*|#)*\s*SUMMARY[:\*]*\s*(.*)/i) || ["", "Review details below."])[1].replace(/[\*#]/g, '').trim();
@@ -405,13 +404,31 @@
                 `;
             });
 
-            // 2. Simple Markdown formatting for the rest of the text
-            // Handle bolding
+            if (!/\[\s*METHOD_CARD\s*\]/i.test(rawRec)) {
+                const methodPatterns = [
+                    /\*\*([^*]{3,60})\*\*/g,
+                    /(?:^|\n)\s*(?:\d+\.|[-•])\s*\*?([A-Za-z][A-Za-z\s\-\/]{2,40}(?:IUD|Implant|Injection|Pill|Condom|Injectable|DIU|Implanon|Depo)[A-Za-z\s\-\/]*)\*?/gi,
+                ];
+                let extracted = [];
+                for (const pattern of methodPatterns) {
+                    let m;
+                    while ((m = pattern.exec(rawRec)) !== null) {
+                        const label = m[1].trim();
+                        if (label.length > 3 && !extracted.includes(label)) extracted.push(label);
+                    }
+                }
+                if (extracted.length) {
+                    formattedBody = extracted.slice(0, 3).map(name => `
+                        <div class="method-card">
+                            <div class="card-header"><h4>${name}</h4></div>
+                            <div class="card-body"><p class="card-summary">${rawRec.replace(/\[\s*METHOD_CARD[\s\S]*?\]/gi, '').slice(0, 280)}…</p></div>
+                        </div>
+                    `).join('') + `<div style="margin-top:1rem; white-space:pre-wrap; line-height:1.6;">${formattedBody}</div>`;
+                }
+            }
+
             formattedBody = formattedBody.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            // Handle lists
             formattedBody = formattedBody.replace(/^\s*\*\s*(.*)/gm, '<li>$1</li>');
-            // Handle line breaks (preserve existing HTML and structure)
-            // But skip breaking inside our newly created HTML
             const parts = formattedBody.split(/(<div[\s\S]*?<\/div>)/g);
             return parts.map(p => {
                 if (p.startsWith('<div')) return p;
@@ -472,6 +489,10 @@
                     body: JSON.stringify(triageData)
                 });
                 const data = await res.json();
+                if (!res.ok || data.success === false) {
+                    document.getElementById('triage-final-result').innerHTML = `<div class="alert alert-error">${data.error || 'Could not queue triage job. Is the Redis worker running?'}</div>`;
+                    return;
+                }
                 if ((data.status === 'queued' || data.status === 'processing') && data.poll_url) {
                     await pollTriageResult(data.poll_url);
                     return;
@@ -524,10 +545,12 @@
                 const res = await fetch('/api/provider/roster');
                 const data = await res.json();
                 const tbody = document.getElementById('chw-roster-table'); tbody.innerHTML = '';
-                if (data.clients.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center">No clients.</td></tr>'; return; }
+                if (data.clients.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center">No clients.</td></tr>'; return; }
                 data.clients.forEach(c => {
+                    const registered = c.registered_at ? new Date(c.registered_at).toLocaleDateString() : '—';
+                    const status = c.triage_status || (c.matched_method ? 'Method Match complete' : 'Registered');
                     const tr = document.createElement('tr');
-                    tr.innerHTML = `<td>${c.name || 'Anonymous'}</td><td>${c.id}</td><td>${new Date(c.registered_at).toLocaleDateString()}</td><td><span class="badge badge-clinician">Registered</span></td>`;
+                    tr.innerHTML = `<td>${c.name || 'Anonymous'}</td><td>${c.id}</td><td>${registered}</td><td>${c.method_snippet || 'Pending'}</td><td><span class="badge badge-clinician">${status}</span></td>`;
                     tbody.appendChild(tr);
                 });
             } catch (e) { }

@@ -77,13 +77,14 @@ Recommended Twilio Content templates:
 
 Main WhatsApp menu:
 ```text
-Method Match
-Ask Question
-Myths & Facts
-Report Side Effects
+1. Method Match
+2. Ask Question
+3. Myths & Facts
+4. Report Side Effects
+5. Change Language
 ```
 
-Single-choice survey questions use quick replies when they have 2-3 options and list pickers when they have 4+ options. Multi-select clinical questions, such as health conditions and methods the user prefers not to use, intentionally stay as numbered text because WhatsApp quick replies are single-choice.
+Single-choice survey questions use quick replies when they have 2-3 options and list pickers when they have 4+ options. Multi-select clinical questions (health conditions, methods to avoid) use list pickers with a numbered-reply fallback for multiple selections.
 
 ## Project Structure
 
