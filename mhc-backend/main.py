@@ -114,10 +114,10 @@ TWILIO_CONTENT_QUICK_REPLY_SID = os.environ.get('TWILIO_CONTENT_QUICK_REPLY_SID'
 TWILIO_CONTENT_LIST_PICKER_SID = os.environ.get('TWILIO_CONTENT_LIST_PICKER_SID')
 
 MAIN_MENU_OPTIONS = {
-    "english": ["Method Match", "Ask Question", "Myths & Facts", "Report Side Effects"],
-    "swahili": ["Njia Inayonifaa", "Uliza Swali", "Ukweli na Imani", "Ripoti Madhara"],
-    "french": ["Methode adaptee", "Poser Question", "Mythes et faits", "Signaler effets"],
-    "portuguese": ["Metodo ideal", "Fazer Pergunta", "Mitos e fatos", "Relatar efeitos"],
+    "english": ["Method Match", "Ask Question", "Myths & Facts", "Report Side Effects", "Change Language"],
+    "swahili": ["Njia Inayonifaa", "Uliza Swali", "Ukweli na Imani", "Ripoti Madhara", "Badilisha Lugha"],
+    "french": ["Methode adaptee", "Poser Question", "Mythes et faits", "Signaler effets", "Changer de langue"],
+    "portuguese": ["Metodo ideal", "Fazer Pergunta", "Mitos e fatos", "Relatar efeitos", "Mudar idioma"],
 }
 
 LANGUAGE_OPTIONS = ["English", "Kiswahili", "Francais", "Portugues"]
@@ -492,6 +492,10 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
                     "portuguese": "Descreva o efeito colateral, quando comecou e o metodo usado. Se os sintomas forem graves, procure atendimento urgente."
                 }
                 send_whatsapp_message(to_number, user_phone, prompt.get(lang, prompt["english"]))
+                return
+            if option_selected(msg, 5, 'language', 'lugha', 'langue', 'idioma', 'change', 'badilisha', 'changer', 'mudar'):
+                db.collection('contraceptive_users').document(user_phone).update({"stage": "AWAITING_LANGUAGE"})
+                send_language_menu(to_number, user_phone)
                 return
             if any(k in msg for k in ['1', 'njia', 'match', 'uzazi', 'panga', 'birth', 'plan', 'tayari', 'kuanza', 'recommandations', 'recomendações']):
                 db.collection('contraceptive_users').document(user_phone).update({"stage": "AWAITING_NAME"})
