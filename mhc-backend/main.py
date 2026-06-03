@@ -2,37 +2,70 @@ import os
 import re
 import datetime
 import json
+import time
 import threading
 from dotenv import load_dotenv
 from flask import Flask, request, Response, render_template, session, redirect, url_for, jsonify
 from twilio.twiml.messaging_response import MessagingResponse
-from twilio.rest import Client as TwilioClient
-from firebase_admin import firestore, initialize_app, credentials
-from google import genai
-from google.genai import types
+from firebase_admin import firestore
 
+from app_config import (
+    ADMIN_CODE,
+    METHOD_MATCH_FALLBACK,
+    WEB_PROVIDER_MAX_OUTPUT_TOKENS,
+)
+from clinical_pipeline import generate_whatsapp_chat_reply
+from db_client import get_db, init_firebase
+from fhir_utils import to_fhir_patient
+from gemini_client import generate_gemini_text
+from health_check import run_health_checks
+from method_match_tasks import process_whatsapp_method_match_job
 from ussd_logic import handle_ussd_request
-from who_mec_engine import run_mec_assessment, format_mec_result_for_llm
 from rag_ingestor import get_retriever
-from rag_prompt import build_system_prompt, format_user_profile_for_prompt
+from rag_prompt import build_system_prompt, build_web_clinical_instruction
 from task_queue import (
     TRIAGE_JOB_FAILURE_TTL_SECONDS,
     TRIAGE_JOB_RESULT_TTL_SECONDS,
     TRIAGE_JOB_TIMEOUT_SECONDS,
     get_triage_queue,
 )
-from user_profile_mapper import (
-    build_method_match_user_message,
-    format_survey_context_for_llm,
-    map_firestore_user_to_profile,
+from user_profile_mapper import serializable_user_snapshot
+from admin_analytics import build_admin_stats, export_clients_csv, collect_safety_items
+from geography import (
+    NormalizedCountry,
+    admin_area_label,
+    admin_area_prompt,
+    build_admin_area_firestore_fields,
+    build_country_firestore_fields,
+    country_confirm_prompt,
+    country_prompt,
+    invalid_location_prompt,
+    is_valid_country_input,
+    is_valid_location_input,
+    normalize_country,
+    normalize_admin_area,
+    countries_for_api,
 )
-from twilio_templates import TwilioTemplateRegistry
-from whatsapp_helpers import (
-    send_long_whatsapp_message,
-    send_options_message,
-    send_twilio_content,
-    split_message_at_sentences,
+from method_categories import classify_method_category_primary
+from method_library import get_method_info, all_methods
+from method_selection import (
+    build_selection_client_message,
+    create_referral,
+    record_followup_outcome,
+    select_method,
 )
+from client_messages import compose_followup_reminder
+from response_cards import parse_method_cards
+from response_cards import build_fallback_method_cards
+from response_cards import resolve_method_cards
+from twilio_messaging import (
+    TWILIO_TEMPLATES,
+    TWILIO_NUMBER,
+    send_whatsapp_with_sms_fallback,
+    send_whatsapp_message,
+    send_whatsapp_options,
+)
+from whatsapp_helpers import send_long_whatsapp_message
 
 load_dotenv()
 
@@ -48,61 +81,19 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'mhc_super_secret_123')
 def index():
     return "Contraception DSS Backend is running. Access /admin or /provider for dashboards."
 
+@app.route("/health", methods=["GET"])
+def health():
+    checks = run_health_checks()
+    status_code = 200 if checks.get("overall", {}).get("ok") else 503
+    return jsonify(checks), status_code
+
 try:
-    bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET")
-    creds_val = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    
     print(f"[DEBUG] Starting initialization. Port: {os.environ.get('PORT', '8080')}")
-    
-    # Render/Cloud Friendly: Check if creds_val is a JSON string or a file path
-    if creds_val and creds_val.strip().startswith('{'):
-        creds_dict = json.loads(creds_val)
-        firebase_creds = credentials.Certificate(creds_dict)
-        initialize_app(firebase_creds, {'storageBucket': bucket_name} if bucket_name else {})
-    elif creds_val and os.path.exists(creds_val):
-        firebase_creds = credentials.Certificate(creds_val)
-        initialize_app(firebase_creds, {'storageBucket': bucket_name} if bucket_name else {})
-    else:
-        initialize_app(options={'storageBucket': bucket_name} if bucket_name else {})
-    
-    db = firestore.client()
-    print("[DEBUG] Firebase Initialized Successfully.")
-except ValueError:
-    db = firestore.client()
-    pass # App already initialized
+    init_firebase()
+    db = get_db()
 except Exception as e:
     print(f"CRITICAL Warning: Could not initialize firebase. {e}")
-    db = None # Allow app to start even if DB fails, so health check can pass
-
-try:
-    client = genai.Client()
-    print("[DEBUG] GenAI Client Initialized.")
-except Exception as e:
-    print(f"Warning: Could not initialize GenAI. {e}")
-    client = None
-
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_TIMEOUT_MS = int(os.environ.get("GEMINI_TIMEOUT_MS", "20000"))
-GEMINI_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "900"))
-GEMINI_RETRY_ATTEMPTS = int(os.environ.get("GEMINI_RETRY_ATTEMPTS", "1"))
-
-def generate_gemini_text(prompt, *, max_output_tokens=None, temperature=0.2):
-    if client is None:
-        raise RuntimeError("GenAI client is not initialized")
-
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_output_tokens or GEMINI_MAX_OUTPUT_TOKENS,
-            http_options=types.HttpOptions(
-                timeout=GEMINI_TIMEOUT_MS,
-                retry_options=types.HttpRetryOptions(attempts=GEMINI_RETRY_ATTEMPTS),
-            ),
-        )
-    )
-    return response.text or ""
+    db = None
 
 def format_to_e164(phone, country_code="+254"):
     """Converts local phone formats (e.g. 07...) to E.164 (+254...)."""
@@ -122,7 +113,6 @@ def format_to_e164(phone, country_code="+254"):
 
 # Globals
 TWILIO_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886')
-TWILIO_TEMPLATES = TwilioTemplateRegistry.from_env()
 
 def _log_whatsapp_template_status():
     status = TWILIO_TEMPLATES.status_report()
@@ -166,74 +156,43 @@ def get_user_state(phone):
         return doc.to_dict()
     return None
 
-def _get_twilio_client():
-    account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
-    auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
-    if not account_sid or not auth_token:
-        return None
-    return TwilioClient(account_sid, auth_token)
-
-def _ensure_whatsapp_prefix(from_number, to_number):
-    if from_number.startswith('whatsapp:') and not to_number.startswith('whatsapp:'):
-        to_number = f"whatsapp:{to_number}"
-    elif not from_number.startswith('whatsapp:') and to_number.startswith('whatsapp:'):
-        from_number = f"whatsapp:{from_number}"
-    return from_number, to_number
-
-def send_whatsapp_message(from_number, to_number, body_text, media_url=None):
-    twilio_client = _get_twilio_client()
-    if not twilio_client:
-        print("Missing Twilio Auth credentials in environment!")
-        return
-
-    from_number, to_number = _ensure_whatsapp_prefix(from_number, to_number)
-
-    def _send_single(from_num, to_num, text):
-        try:
-            twilio_client.messages.create(
-                from_=from_num,
-                body=split_message_at_sentences(text, 1500)[0],
-                to=to_num,
-                media_url=[media_url] if media_url else None
-            )
-        except Exception as e:
-            print(f"Twilio Error: {e}")
-
-    if media_url or len(body_text) <= 1500:
-        _send_single(from_number, to_number, body_text)
-    else:
-        send_long_whatsapp_message(_send_single, from_number, to_number, body_text)
-
-def _send_twilio_content(from_number, to_number, content_sid, variables, *, option_count=0, mode=""):
-    return send_twilio_content(
-        _get_twilio_client,
-        from_number,
-        to_number,
-        content_sid,
-        variables,
-        option_count=option_count,
-        mode=mode,
-    )
-
 def send_whatsapp_buttons(from_number, to_number, body_text, buttons):
     send_whatsapp_options(from_number, to_number, body_text, buttons)
 
-def send_whatsapp_options(from_number, to_number, body_text, options, multi_select=False, button_text="Choose"):
-    send_options_message(
-        ensure_prefix=_ensure_whatsapp_prefix,
-        send_plain=send_whatsapp_message,
-        send_content=_send_twilio_content,
-        template_registry=TWILIO_TEMPLATES,
-        from_number=from_number,
-        to_number=to_number,
-        body_text=body_text,
-        options=options,
-        multi_select=multi_select,
-        button_text=button_text,
-    )
-
 def send_whatsapp_list_picker(from_number, to_number, body_text, options, button_text="Choose"):
     send_whatsapp_options(from_number, to_number, body_text, options, button_text=button_text)
+
+def dispatch_whatsapp_method_match(user_phone, to_number, lang, user_snapshot):
+    """Queue Method Match generation (Redis worker) with inline thread fallback."""
+    payload = serializable_user_snapshot(user_snapshot)
+    payload["phone"] = user_phone
+    payload["language"] = lang
+    payload["stage"] = "REGISTERED"
+    payload["method_match_pending"] = True
+
+    db.collection("contraceptive_users").document(user_phone).update({
+        "method_match_status": "queued",
+    })
+
+    try:
+        job = get_triage_queue().enqueue(
+            "method_match_tasks.process_whatsapp_method_match_job",
+            user_phone,
+            to_number,
+            lang,
+            payload,
+            timeout=TRIAGE_JOB_TIMEOUT_SECONDS,
+            result_ttl=TRIAGE_JOB_RESULT_TTL_SECONDS,
+            failure_ttl=TRIAGE_JOB_FAILURE_TTL_SECONDS,
+        )
+        print(f"[{user_phone}] Queued method match job {job.id}")
+    except Exception as exc:
+        print(f"[{user_phone}] Redis queue unavailable ({exc}); running inline worker thread")
+        threading.Thread(
+            target=process_whatsapp_method_match_job,
+            args=(user_phone, to_number, lang, payload),
+            daemon=True,
+        ).start()
 
 def extract_whatsapp_reply(form):
     return (
@@ -554,7 +513,82 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
             user["stage"] = "MAIN_MENU"
         
         if stage == "AWAITING_NAME":
-            db.collection('contraceptive_users').document(user_phone).update({"name": incoming_msg.strip(), "stage": "AWAITING_Q1_AGE"})
+            db.collection('contraceptive_users').document(user_phone).update({
+                "name": incoming_msg.strip(),
+                "stage": "AWAITING_COUNTRY",
+            })
+            send_whatsapp_message(to_number, user_phone, country_prompt(lang))
+            return
+
+        if stage == "AWAITING_COUNTRY":
+            if not is_valid_country_input(incoming_msg):
+                send_whatsapp_message(to_number, user_phone, invalid_location_prompt(lang, "country"))
+                return
+            normalized = normalize_country(incoming_msg)
+            if normalized.needs_confirmation:
+                db.collection('contraceptive_users').document(user_phone).update({
+                    "stage": "AWAITING_COUNTRY_CONFIRM",
+                    "pending_country": normalized.canonical,
+                    "pending_country_raw": normalized.raw,
+                    "pending_country_match_confidence": normalized.confidence,
+                })
+                send_whatsapp_message(
+                    to_number, user_phone, country_confirm_prompt(lang, normalized.canonical)
+                )
+                return
+            db.collection('contraceptive_users').document(user_phone).update({
+                **build_country_firestore_fields(normalized, source="whatsapp"),
+                "stage": "AWAITING_ADMIN_AREA",
+            })
+            send_whatsapp_message(
+                to_number, user_phone, admin_area_prompt(lang, normalized.canonical)
+            )
+            return
+
+        if stage == "AWAITING_COUNTRY_CONFIRM":
+            msg = incoming_msg.lower().strip()
+            if msg in ("2", "no", "hapana", "non", "nao", "não"):
+                db.collection('contraceptive_users').document(user_phone).update({
+                    "stage": "AWAITING_COUNTRY",
+                    "pending_country": firestore.DELETE_FIELD,
+                    "pending_country_raw": firestore.DELETE_FIELD,
+                    "pending_country_match_confidence": firestore.DELETE_FIELD,
+                })
+                send_whatsapp_message(to_number, user_phone, country_prompt(lang))
+                return
+            if msg not in ("1", "yes", "ndio", "oui", "sim"):
+                send_whatsapp_message(
+                    to_number, user_phone, country_confirm_prompt(lang, user.get("pending_country", ""))
+                )
+                return
+            confirmed = NormalizedCountry(
+                user.get("pending_country_raw", ""),
+                user.get("pending_country", ""),
+                user.get("pending_country_match_confidence", "fuzzy"),
+                False,
+            )
+            db.collection('contraceptive_users').document(user_phone).update({
+                **build_country_firestore_fields(confirmed, source="whatsapp"),
+                "stage": "AWAITING_ADMIN_AREA",
+                "pending_country": firestore.DELETE_FIELD,
+                "pending_country_raw": firestore.DELETE_FIELD,
+                "pending_country_match_confidence": firestore.DELETE_FIELD,
+            })
+            send_whatsapp_message(
+                to_number, user_phone, admin_area_prompt(lang, confirmed.canonical)
+            )
+            return
+
+        if stage == "AWAITING_ADMIN_AREA":
+            if not is_valid_location_input(incoming_msg):
+                send_whatsapp_message(to_number, user_phone, invalid_location_prompt(lang, "admin_area"))
+                return
+            country = user.get("country", "")
+            db.collection('contraceptive_users').document(user_phone).update({
+                **build_admin_area_firestore_fields(incoming_msg, country, source="whatsapp"),
+                "location_captured_at": firestore.SERVER_TIMESTAMP,
+                "stage": "AWAITING_Q1_AGE",
+            })
             send_whatsapp_message(to_number, user_phone, q["q1"])
             return
             
@@ -642,16 +676,21 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
             return
 
         if stage == "AWAITING_Q13_PREFERENCES":
+            prefer = incoming_msg.strip()
+            user["prefer_not_to_use"] = prefer
+            user["stage"] = "REGISTERED"
+            user["method_match_pending"] = True
+
             db.collection('contraceptive_users').document(user_phone).update({
-                "prefer_not_to_use": incoming_msg.strip(),
+                "prefer_not_to_use": prefer,
                 "registered_at": firestore.SERVER_TIMESTAMP,
                 "stage": "REGISTERED",
                 "method_match_pending": True,
+                "method_match_status": "queued",
             })
             send_whatsapp_message(to_number, user_phone, q["finished"])
-            user = get_user_state(user_phone)
-            incoming_msg = build_method_match_user_message(user, lang)
-            stage = "REGISTERED"
+            dispatch_whatsapp_method_match(user_phone, to_number, lang, user)
+            return
 
         
         # --- GLOBAL COMMANDS ---
@@ -676,74 +715,25 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
 
         # --- THE WHO MEC PIPELINE & GENERAL CHAT ---
         if user.get("stage") in ["REGISTERED", "MAIN_MENU"]:
-            print(f"\n==========================================")
-            print(f"[{user_phone}] AI Processing...")
-            
-            is_registered = (user.get("stage") == "REGISTERED")
-            is_method_match = bool(user.get("method_match_pending")) or incoming_msg.startswith("The client") or incoming_msg.startswith("Mteja") or incoming_msg.startswith("La cliente") or incoming_msg.startswith("A cliente")
-            user_lang = user.get('language', 'english')
-            
-            mec_text = "[User not yet registered for Method Match]"
-            prof_summary = "[No clinical profile available]"
-            
-            if is_registered:
-                prof = map_firestore_user_to_profile(user)
-                mec_result = run_mec_assessment(prof)
-                mec_text = format_mec_result_for_llm(mec_result, language=user_lang)
-                prof_dict = {k: v for k, v in prof.__dict__.items() if v is not None}
-                prof_summary = format_user_profile_for_prompt(prof_dict)
-                prof_summary = f"{prof_summary}\n\n{format_survey_context_for_llm(user)}"
-            
-            retriever = get_retriever()
-            
-            search_query = incoming_msg
-            if user_lang != 'english' and not is_method_match:
-                try:
-                    search_query = generate_gemini_text(
-                        f"You are a medical search optimizer. Translate this user sexual health query into ONLY 3-6 English medical keywords for a textbook search. Output ONLY the words, no explanation. Query: {incoming_msg}",
-                        max_output_tokens=80
-                    ).strip()
-                    search_query = re.sub(r'^(Keywords|Search|Keywords:)\s*', '', search_query, flags=re.IGNORECASE)
-                    print(f"[{user_phone}] Translated search query: {search_query}")
-                except Exception as e:
-                    print(f"[{user_phone}] Translation failed, falling back to original: {e}")
-            
-            if is_method_match:
-                search_query = "WHO MEC contraceptive method recommendation implant IUD injectable pill eligibility"
+            if user.get("method_match_pending") or user.get("method_match_status") == "queued":
+                print(f"[{user_phone}] Method match still processing — skipping duplicate AI call")
+                return
 
-            chunks = retriever.retrieve(search_query, top_k=4, country_scope='kenya')
-            print(f"[{user_phone}] Retrieved {len(chunks)} chunks for context.")
-            for i, c in enumerate(chunks):
-                print(f"  Chunk {i+1}: {c['source_citation']} (Score: {c.get('final_score', 0):.3f})")
-            
-            context_str = retriever.format_context_for_llm(chunks)
-            
-            sys_prompt = build_system_prompt(
-                mec_result_text=mec_text,
-                retrieved_context=context_str,
-                user_profile_summary=prof_summary,
-                channel="whatsapp",
-                language=user_lang,
-                user_name=user.get('name', '')
-            )
-            
-            max_tokens = 650 if is_method_match else GEMINI_MAX_OUTPUT_TOKENS
-            reply_text = generate_gemini_text(f"{sys_prompt}\n\nUser Message: {incoming_msg}", max_output_tokens=max_tokens)
-            
-            send_long_whatsapp_message(send_whatsapp_message, to_number, user_phone, reply_text)
-            
-            update_fields = {}
-            if is_method_match:
-                update_fields = {
-                    'matched_method': reply_text.strip(),
-                    'latest_mec_text': mec_text,
-                    'method_match_pending': False,
-                    'stage': 'MAIN_MENU',
-                }
-            db.collection('contraceptive_users').document(user_phone).update(update_fields) if update_fields else None
-            
-            print(f"[{user_phone}] Success!")
+            print(f"\n==========================================")
+            print(f"[{user_phone}] AI chat processing...")
+            user["phone"] = user_phone
+            try:
+                reply_text = generate_whatsapp_chat_reply(user, incoming_msg)
+                if not reply_text.strip():
+                    raise RuntimeError("Empty chat reply from Gemini")
+                send_long_whatsapp_message(send_whatsapp_message, to_number, user_phone, reply_text)
+                print(f"[{user_phone}] Chat success!")
+            except Exception as chat_exc:
+                print(f"[{user_phone}] Chat error: {chat_exc}")
+                fallback = METHOD_MATCH_FALLBACK.get(lang, METHOD_MATCH_FALLBACK["english"])
+                send_whatsapp_message(to_number, user_phone, fallback)
             print(f"==========================================\n")
+            return
 
     except Exception as e:
         print(f"[{user_phone}] PIPELINE ERROR: {e}")
@@ -758,7 +748,7 @@ def ussd():
     service_code = request.values.get('serviceCode')
     phone_number = request.values.get('phoneNumber')
     text = request.values.get('text')
-    return handle_ussd_request(session_id, service_code, phone_number, text, db=db, client=client)
+    return handle_ussd_request(session_id, service_code, phone_number, text, db=db)
 
 
 # ======================== ADMIN DASHBOARD ========================
@@ -771,20 +761,7 @@ def admin_portal():
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login_page'))
     return render_template('admin_portal.html')
-# Access Codes for Admin
-ADMIN_CODE = "ADMIN2026"
-
-def to_fhir_patient(user_data):
-    """Maps Firestore user data to a basic FHIR R4 Patient resource."""
-    return {
-        "resourceType": "Patient",
-        "id": user_data.get('phone', 'unknown').replace('+', ''),
-        "identifier": [{"system": "tel", "value": user_data.get('phone')}],
-        "name": [{"text": user_data.get('name', 'Anonymous Client')}],
-        "extension": [
-            {"url": "http://chaguoai.ke/fhir/assigned_provider", "valueString": user_data.get('assigned_provider_id')}
-        ]
-    }
+# Access Codes for Admin — see app_config.ADMIN_CODE
 
 @app.route("/api/admin/login", methods=['POST'])
 def api_admin_login():
@@ -800,57 +777,77 @@ def admin_logout():
     session.pop('admin_logged_in', None)
     return redirect(url_for('admin_login_page'))
 
-@app.route("/api/admin/stats", methods=['GET'])
+@app.route("/api/geography/countries", methods=["GET"])
+def api_geography_countries():
+    """Canonical country list for provider portal dropdown (analytics only)."""
+    return jsonify({"countries": countries_for_api()})
+
+
+def _require_admin():
+    if not session.get("admin_logged_in"):
+        return jsonify({"error": "Unauthorized"}), 401
+    return None
+
+
+@app.route("/api/admin/stats", methods=["GET"])
 def admin_stats():
+    denied = _require_admin()
+    if denied:
+        return denied
     try:
-        users = list(db.collection('contraceptive_users').stream())
-        providers = list(db.collection('providers').stream())
-        
-        # Robust Method Extraction for Analytics
-        method_counts = {}
-        # Define common category keywords to look for in AI responses
-        categories = ["Implant", "IUD", "Injection", "Pill", "Condom", "Sterilization", "Patch", "Ring", "Emergency"]
-        
-        for u in users:
-            data = u.to_dict()
-            raw_rec = data.get('matched_method', '')
-            
-            if not raw_rec or "Unmatched" in raw_rec:
-                method_counts["Unmatched"] = method_counts.get("Unmatched", 0) + 1
-                continue
-            
-            # Simple keyword matching to categorize the long AI text
-            found = False
-            for cat in categories:
-                if cat.lower() in raw_rec.lower():
-                    method_counts[cat] = method_counts.get(cat, 0) + 1
-                    found = True
-                    break # Assign to the first prominent category found
-            
-            if not found:
-                method_counts["Other/Complex"] = method_counts.get("Other/Complex", 0) + 1
-            
-        stats = {
-            "total_clients": len(users),
-            "active_chws": len([p for p in providers if p.to_dict().get('role') == 'chw' and p.to_dict().get('status') == 'approved']),
-            "active_clinicians": len([p for p in providers if p.to_dict().get('role') == 'clinician' and p.to_dict().get('status') == 'approved']),
-            "method_stats": method_counts,
-            # Add recent activity highlights
-            "recent_activity": [
-                {
-                    "user": u.to_dict().get("name", "Unknown"),
-                    "phone": u.id,
-                    "date": u.to_dict().get("registered_at", ""),
-                    "snippet": u.to_dict().get("matched_method", "")[:80] + "..."
-                } for u in sorted(users, key=lambda x: str(x.to_dict().get("registered_at", "")), reverse=True)[:5]
-            ]
-        }
-        return jsonify(stats)
+        cohort = request.args.get("cohort", "all")
+        return jsonify(build_admin_stats(db, cohort=cohort))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/api/admin/export/clients.csv", methods=["GET"])
+def admin_export_clients():
+    denied = _require_admin()
+    if denied:
+        return denied
+    try:
+        users = []
+        for doc in db.collection("contraceptive_users").stream():
+            data = doc.to_dict() or {}
+            data["phone"] = doc.id
+            users.append(data)
+        csv_body = export_clients_csv(users)
+        return Response(
+            csv_body,
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=chaguoai_clients.csv"},
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/events", methods=["GET"])
+def admin_events():
+    if not session.get("admin_logged_in"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    cohort = request.args.get("cohort", "all")
+
+    def event_stream():
+        # Keep the stream lightweight: emit compact stats every 15 seconds.
+        while True:
+            try:
+                payload = build_admin_stats(db, cohort=cohort)
+                yield f"event: stats\ndata: {json.dumps(payload, default=str)}\n\n"
+            except GeneratorExit:
+                break
+            except Exception as exc:
+                yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+            time.sleep(15)
+
+    return Response(event_stream(), mimetype="text/event-stream")
+
 @app.route("/api/admin/pending_providers", methods=['GET'])
 def admin_pending_providers():
+    denied = _require_admin()
+    if denied:
+        return denied
     providers = []
     for doc in db.collection('providers').where('status', '==', 'pending').stream():
         p = doc.to_dict()
@@ -860,6 +857,9 @@ def admin_pending_providers():
 
 @app.route("/api/admin/approve_provider/<provider_id>", methods=['POST'])
 def admin_approve_provider(provider_id):
+    denied = _require_admin()
+    if denied:
+        return denied
     db.collection('providers').document(provider_id).update({"status": "approved"})
     return jsonify({"success": True})
 
@@ -925,7 +925,9 @@ def serialize_firestore_value(value):
         return {k: serialize_firestore_value(v) for k, v in value.items()}
     if isinstance(value, list):
         return [serialize_firestore_value(v) for v in value]
-    return value
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
 
 def extract_method_snippet(text, limit=120):
     if not text:
@@ -939,19 +941,315 @@ def extract_method_snippet(text, limit=120):
             return keyword
     return cleaned[:limit] + ("…" if len(cleaned) > limit else "")
 
+def _provider_client_summary(doc) -> dict:
+    u = serialize_firestore_value(doc.to_dict())
+    u["id"] = doc.id
+    u["phone"] = doc.id
+    matched = u.get("matched_method") or u.get("latest_recommendation") or ""
+    u["method_snippet"] = extract_method_snippet(matched)
+    u["method_category_primary"] = (
+        u.get("method_category_primary") or classify_method_category_primary(matched)
+    )
+    u["channel"] = u.get("source") or ("provider" if u.get("triage_status") else "whatsapp")
+    u["registered_at"] = serialize_firestore_value(u.get("registered_at") or u.get("created_at"))
+    u["completed_at"] = serialize_firestore_value(
+        u.get("method_match_completed_at") or u.get("triage_completed_at")
+    )
+    if u.get("method_match_status") == "completed" or u.get("triage_status") == "completed":
+        u["match_status"] = "completed"
+    elif u.get("method_match_status") == "failed" or u.get("triage_status") == "failed":
+        u["match_status"] = "failed"
+    elif u.get("triage_status") in ("queued", "processing"):
+        u["match_status"] = u.get("triage_status")
+    elif matched:
+        u["match_status"] = "completed"
+    else:
+        u["match_status"] = "in_progress"
+    return u
+
+
 @app.route("/api/provider/roster", methods=['GET'])
 def api_provider_roster():
     pid = session.get('provider_id')
-    if not pid: return jsonify({"error": "Unauthorized"}), 401
-    
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+
     users = []
-    for doc in db.collection('contraceptive_users').where(filter=firestore.FieldFilter('assigned_provider_id', '==', pid)).stream():
-        u = serialize_firestore_value(doc.to_dict())
-        u['id'] = doc.id
-        u['method_snippet'] = extract_method_snippet(u.get('matched_method') or u.get('latest_recommendation'))
-        u['registered_at'] = serialize_firestore_value(u.get('registered_at'))
-        users.append(u)
+    for doc in db.collection('contraceptive_users').where(
+        filter=firestore.FieldFilter('assigned_provider_id', '==', pid)
+    ).stream():
+        users.append(_provider_client_summary(doc))
     return jsonify({"clients": users})
+
+
+@app.route("/api/provider/clients/<path:phone>", methods=["GET"])
+def api_provider_client_detail(phone):
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    phone = format_to_e164(phone)
+    doc = db.collection("contraceptive_users").document(phone).get()
+    if not doc.exists:
+        return jsonify({"error": "Client not found"}), 404
+
+    data = doc.to_dict() or {}
+    if data.get("assigned_provider_id") != pid:
+        return jsonify({"error": "Forbidden"}), 403
+
+    client = _provider_client_summary(doc)
+    side_effects = []
+    try:
+        se_query = doc.reference.collection("side_effects").order_by(
+            "timestamp", direction=firestore.Query.DESCENDING
+        ).limit(10)
+    except Exception:
+        se_query = doc.reference.collection("side_effects").limit(10)
+    for se in se_query.stream():
+        item = serialize_firestore_value(se.to_dict())
+        item["id"] = se.id
+        item["at"] = serialize_firestore_value(item.get("timestamp"))
+        side_effects.append(item)
+    side_effects.sort(key=lambda x: x.get("at") or "", reverse=True)
+    recommendation_text = client.get("matched_method") or client.get("latest_recommendation") or ""
+    mec_summary = client.get("latest_mec_text") or client.get("latest_mec_result") or ""
+    citations = client.get("recommendation_citations") or []
+    stored_cards = client.get("method_cards") or []
+    if stored_cards:
+        method_cards = stored_cards
+    else:
+        method_cards, recommendation_text = resolve_method_cards(
+            recommendation_text, mec_summary, citations
+        )
+
+    return jsonify({
+        "client": client,
+        "recommendation": recommendation_text,
+        "method_cards": method_cards,
+        "recommendation_citations": client.get("recommendation_citations") or [],
+        "mec_summary": client.get("latest_mec_text") or client.get("latest_mec_result") or "",
+        "side_effects": side_effects,
+    })
+
+
+@app.route("/api/provider/side_effects", methods=["GET"])
+def api_provider_side_effects():
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    items = collect_safety_items(db, provider_id=pid, limit=50)
+    reports = [i for i in items if i.get("type") == "side_effect"]
+    return jsonify({"reports": reports})
+
+
+@app.route("/api/provider/methods", methods=["GET"])
+def api_provider_methods():
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify({"methods": all_methods()})
+
+
+@app.route("/api/provider/clients/<path:phone>/select_method", methods=["POST"])
+def api_provider_select_method(phone):
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.json or {}
+    method_name = data.get("method") or data.get("method_name")
+    if not method_name:
+        return jsonify({"error": "Method is required"}), 400
+    try:
+        phone = format_to_e164(phone)
+        result = select_method(
+            db=db,
+            phone=phone,
+            provider_id=pid,
+            method_name=method_name,
+            counseling=data.get("counseling") or {},
+            referral=data.get("referral") or None,
+        )
+        return jsonify(serialize_firestore_value(result))
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 403
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/provider/clients/<path:phone>/referral", methods=["POST"])
+def api_provider_create_referral(phone):
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.json or {}
+    method_name = data.get("method") or data.get("method_name") or "Selected method"
+    try:
+        phone = format_to_e164(phone)
+        referral = create_referral(
+            db=db,
+            phone=phone,
+            provider_id=pid,
+            method_name=method_name,
+            referral=data,
+        )
+        return jsonify({"success": True, "referral": serialize_firestore_value(referral)})
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 403
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/provider/clients/<path:phone>/send_selection_message", methods=["POST"])
+def api_provider_send_selection_message(phone):
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.json or {}
+    phone = format_to_e164(phone)
+    doc_ref = db.collection("contraceptive_users").document(phone)
+    doc = doc_ref.get()
+    if not doc.exists:
+        return jsonify({"error": "Client not found"}), 404
+    client = doc.to_dict() or {}
+    if client.get("assigned_provider_id") != pid:
+        return jsonify({"error": "Forbidden"}), 403
+
+    method_name = data.get("method") or client.get("selected_method")
+    if not method_name:
+        return jsonify({"error": "Select a method before sending a message"}), 400
+
+    referral = data.get("referral")
+    if not referral and client.get("latest_referral_facility"):
+        referral = {"facility_name": client.get("latest_referral_facility")}
+
+    message = build_selection_client_message(
+        client=client,
+        method_name=method_name,
+        referral=referral,
+        next_followup=serialize_firestore_value(client.get("next_followup_at")),
+    )
+    delivery = send_whatsapp_with_sms_fallback(TWILIO_NUMBER, phone, message)
+    doc_ref.set({
+        "selection_message_status": delivery.get("status"),
+        "selection_message_channel": delivery.get("channel"),
+        "selection_message_error": delivery.get("error") or delivery.get("whatsapp_error") or "",
+        "selection_message_sent_at": firestore.SERVER_TIMESTAMP,
+        "latest_selection_message": message,
+    }, merge=True)
+    return jsonify({"success": delivery.get("status") == "sent", "delivery": delivery, "message": message})
+
+
+@app.route("/api/provider/clients/<path:phone>/compose_followup", methods=["POST"])
+def api_provider_compose_followup(phone):
+    """Send one composed follow-up message to a client (WhatsApp/SMS)."""
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.json or {}
+    phone = format_to_e164(phone)
+    doc_ref = db.collection("contraceptive_users").document(phone)
+    doc = doc_ref.get()
+    if not doc.exists:
+        return jsonify({"error": "Client not found"}), 404
+    client = doc.to_dict() or {}
+    if client.get("assigned_provider_id") != pid:
+        return jsonify({"error": "Forbidden"}), 403
+
+    custom = (data.get("message") or "").strip()
+    method_name = data.get("method") or client.get("selected_method") or "your method"
+    reason = (data.get("reason") or "routine check-in").strip()
+    if custom:
+        message = custom
+    else:
+        message = compose_followup_reminder(
+            client_name=client.get("name") or "",
+            method_name=method_name,
+            reason=reason,
+        )
+
+    delivery = send_whatsapp_with_sms_fallback(TWILIO_NUMBER, phone, message)
+    doc_ref.set({
+        "latest_followup_message": message,
+        "latest_followup_sent_at": firestore.SERVER_TIMESTAMP,
+        "latest_followup_sent_by": pid,
+    }, merge=True)
+    return jsonify({
+        "success": delivery.get("status") == "sent",
+        "delivery": delivery,
+        "message": message,
+    })
+
+
+@app.route("/api/provider/clients/<path:phone>/followups", methods=["GET"])
+def api_provider_client_followups(phone):
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    phone = format_to_e164(phone)
+    doc = db.collection("contraceptive_users").document(phone).get()
+    if not doc.exists:
+        return jsonify({"error": "Client not found"}), 404
+    if (doc.to_dict() or {}).get("assigned_provider_id") != pid:
+        return jsonify({"error": "Forbidden"}), 403
+    tasks = []
+    for task in db.collection("followup_tasks").where(
+        filter=firestore.FieldFilter("phone", "==", phone)
+    ).stream():
+        item = serialize_firestore_value(task.to_dict())
+        item["id"] = task.id
+        tasks.append(item)
+    tasks.sort(key=lambda x: str(x.get("due_at") or ""))
+    return jsonify({"followups": tasks})
+
+
+@app.route("/api/provider/followups", methods=["GET"])
+def api_provider_followups():
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    status = request.args.get("status")
+    tasks = []
+    query = db.collection("followup_tasks").where(
+        filter=firestore.FieldFilter("provider_id", "==", pid)
+    )
+    for task in query.stream():
+        item = serialize_firestore_value(task.to_dict())
+        item["id"] = task.id
+        if status and item.get("status") != status:
+            continue
+        tasks.append(item)
+    tasks.sort(key=lambda x: str(x.get("due_at") or ""))
+    return jsonify({"followups": tasks})
+
+
+@app.route("/api/provider/followups/<task_id>/outcome", methods=["POST"])
+def api_provider_followup_outcome(task_id):
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.json or {}
+    outcome = data.get("outcome")
+    if not outcome:
+        return jsonify({"error": "Outcome is required"}), 400
+    try:
+        result = record_followup_outcome(
+            db=db,
+            task_id=task_id,
+            provider_id=pid,
+            outcome=outcome,
+            note=data.get("note", ""),
+        )
+        return jsonify(serialize_firestore_value(result))
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 403
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 @app.route("/api/provider/mec_query", methods=['POST'])
 def api_provider_mec_query():
@@ -975,12 +1273,11 @@ def api_provider_mec_query():
             language="english",
         )
         full_prompt = (
-            f"{sys_prompt}\n\nClinician Query: {query}\n\n"
-            "IMPORTANT: You MUST output 1-3 recommended methods using [METHOD_CARD] blocks "
-            "with NAME, SUMMARY, and DETAILS fields. Include MEC category and citations."
+            f"{sys_prompt}\n\n{build_web_clinical_instruction()}\n\n"
+            f"Clinician Query: {query}"
         )
         
-        response_text = generate_gemini_text(full_prompt, max_output_tokens=900)
+        response_text = generate_gemini_text(full_prompt, max_output_tokens=WEB_PROVIDER_MAX_OUTPUT_TOKENS)
         return jsonify({"success": True, "response": response_text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1000,6 +1297,18 @@ def api_provider_submit_triage():
     data['assigned_provider_id'] = pid
     data['stage'] = 'REGISTERED'
     data['registered_at'] = firestore.SERVER_TIMESTAMP
+    if data.get('country') or data.get('admin_area'):
+        data['location_capture_purpose'] = 'analytics_only'
+        data['location_source'] = 'provider'
+        data['admin_area_type'] = data.get('admin_area_type') or admin_area_label(data.get('country'))
+        if data.get('country') and not data.get('country_raw'):
+            normalized = normalize_country(str(data['country']), allow_legacy_index=False)
+            data['country'] = normalized.canonical
+            data['country_raw'] = normalized.raw
+            data['country_match_confidence'] = normalized.confidence
+        if data.get('admin_area') and not data.get('admin_area_raw'):
+            data['admin_area_raw'] = str(data['admin_area']).strip()
+            data['admin_area'] = normalize_admin_area(data['admin_area'], data.get('country'))
     
     db.collection('contraceptive_users').document(phone).set(data)
     job_ref = db.collection('triage_jobs').document()
@@ -1021,7 +1330,7 @@ def api_provider_submit_triage():
             func="triage_tasks.process_triage_job",
             args=(job_ref.id, triage_payload),
             job_id=f"triage_{job_ref.id}",
-            job_timeout=TRIAGE_JOB_TIMEOUT_SECONDS,
+            timeout=TRIAGE_JOB_TIMEOUT_SECONDS,
             result_ttl=TRIAGE_JOB_RESULT_TTL_SECONDS,
             failure_ttl=TRIAGE_JOB_FAILURE_TTL_SECONDS,
         )
@@ -1065,11 +1374,24 @@ def api_provider_triage_result(job_id):
     if not doc.exists:
         return jsonify({"error": "Job not found"}), 404
 
-    result = doc.to_dict()
+    result = serialize_firestore_value(doc.to_dict())
     if result.get('assigned_provider_id') != pid:
         return jsonify({"error": "Forbidden"}), 403
 
-    return jsonify({"success": True, **result})
+    recommendation = result.get("recommendation") or ""
+    method_cards = result.get("method_cards") or []
+    if not method_cards and recommendation:
+        method_cards, recommendation = resolve_method_cards(
+            recommendation,
+            result.get("mec_result") or "",
+            result.get("recommendation_citations") or [],
+        )
+        result["recommendation"] = recommendation
+        result["method_cards"] = method_cards
+
+    payload = {"success": True, **result}
+    payload["method_cards_count"] = len(method_cards or [])
+    return jsonify(payload)
 
 if __name__ == "__main__":
     # For local dev: default to 8080. For Render: uses the dynamic $PORT.

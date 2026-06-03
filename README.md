@@ -9,6 +9,7 @@ ChaguoAI is a professional-grade clinical decision support system (DSS) designed
 - **Cross-Lingual Support:** Native support for English, Swahili, French, and Portuguese.
 - **Unified Provider Portal:** A professional web interface for Community Health Workers (CHWs) and Clinicians to manage user rosters and run advanced assessments.
 - **Multi-Channel Delivery:** Seamless interaction across WhatsApp (Twilio), USSD (Africa's Talking), and Web.
+- **Analytics Geography:** Optional country and region capture for dashboards only — never used in WHO MEC or Method Match logic. See [mhc-docs/geography.md](mhc-docs/geography.md).
 
 ## Architecture
 
@@ -63,6 +64,8 @@ cd mhc-backend
 python worker.py
 ```
 
+On **Windows**, `worker.py` automatically uses RQ's `SimpleWorker` (no `os.fork`). On Linux/macOS/Render it uses the standard fork-based worker.
+
 Render setup:
 - Web service start command: `gunicorn main:app --bind 0.0.0.0:$PORT`
 - Worker service start command: `python worker.py`
@@ -99,6 +102,19 @@ Single-choice survey questions use quick replies when they have 2-3 options and 
 
 See also: [mhc-docs/twilio_setup.md](mhc-docs/twilio_setup.md) for webhook/ngrok setup.
 
+### 8. Geography (analytics only)
+
+WhatsApp users **type** country and region (no long list menus). The CHW provider portal uses a **dropdown** of 54 African countries plus a text field for region. USSD collects geography **before** the 13 clinical questions.
+
+Full design, Firestore fields, and APIs: [mhc-docs/geography.md](mhc-docs/geography.md).
+
+Run geography unit tests:
+
+```bash
+cd mhc-backend
+python -m unittest test_geography.py -v
+```
+
 ## Project Structure
 
 - `mhc-backend/`: Core logic (Flask server, RAG logic, and WHO MEC engine).
@@ -118,8 +134,9 @@ For community health workers to perform triage and manage rosters.
 
 ### 2. Admin Portal
 For system administrators to approve providers and view analytics.
-- **URL:** `/admin`
-- **Access Code:** `ADMIN2026`
+- **URL:** `/admin` → `/admin/portal` after login
+- **Access Code:** `ADMIN2026` (or `ADMIN_CODE` env)
+- **Dashboard guide:** [mhc-docs/dashboards.md](mhc-docs/dashboards.md)
 
 > [!IMPORTANT]
 > The Admin Access Code is required to enter the protected management area. In a production setting, this should be set via the `ADMIN_SECRET` environment variable.

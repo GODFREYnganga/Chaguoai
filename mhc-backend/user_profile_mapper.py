@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
+from geography import strip_analytics_fields
 from who_mec_engine import UserProfile
 
 
@@ -65,6 +66,7 @@ def _map_previous_method_stop(raw: str) -> tuple[Optional[str], Optional[bool]]:
 
 def map_firestore_user_to_profile(user: dict) -> UserProfile:
     """Build a complete UserProfile from WhatsApp / web survey Firestore fields."""
+    user = strip_analytics_fields(user)
     prof = UserProfile()
     prof.age_years = _first_int(user.get("age"))
 
@@ -154,7 +156,8 @@ METHOD_AVOID_LABELS = {
 
 
 def format_survey_context_for_llm(user: dict) -> str:
-    """Plain-language summary of all collected intake answers for the LLM."""
+    """Plain-language summary of clinical intake answers (excludes analytics geography)."""
+    user = strip_analytics_fields(user)
     avoid_raw = str(user.get("prefer_not_to_use", ""))
     avoided = []
     for key, label in METHOD_AVOID_LABELS.items():
@@ -191,27 +194,107 @@ def build_method_match_user_message(user: dict, language: str = "english") -> st
         "english": (
             f"The client {name} has completed all 13 Method Match questions. "
             "Using Section A (profile), Section B (WHO MEC), and Section C (guidelines), "
-            "recommend the TOP 2-3 safest contraceptive methods for this client. "
-            "Start with your #1 recommendation in *bold*. Keep the reply concise (under 450 words), "
-            "use complete sentences, and name specific methods (e.g. implant, IUD, injection, pill)."
+            "recommend the TOP 2-3 safest contraceptive methods. "
+            "STRICT LIMIT: 50-150 words total. "
+            "Start with #1 in *bold*, then brief bullets for options 2-3, one source line, one short question."
         ),
         "swahili": (
             f"Mteja {name} amemaliza maswali 13 ya Method Match. "
-            "Kwa kutumia wasifu, WHO MEC, na miongozo, pendekeza njia 2-3 salama zaidi. "
-            "Anza na mapendekezo yako ya #1 kwa *bold*. Fupisha (chini ya maneno 450), "
-            "tumia sentensi kamili, na taja njia mahususi (mf. implant, IUD, sindano, kidonge)."
+            "Pendekeza njia 2-3 salama zaidi kutoka WHO MEC. "
+            "KIKOMO: maneno 50-150 tu. Anza na #1 kwa *bold*, kisha bullets fupi, chanzo, swali moja."
         ),
         "french": (
             f"La cliente {name} a terminé les 13 questions Method Match. "
-            "En utilisant le profil, la CMM OMS et les lignes directrices, recommandez les 2-3 "
-            "méthodes contraceptives les plus sûres. Commencez par la recommandation #1 en *gras*. "
-            "Soyez concis (moins de 450 mots), utilisez des phrases complètes et nommez des méthodes précises."
+            "Recommandez 2-3 méthodes les plus sûres selon la CMM OMS. "
+            "LIMITE STRICTE : 50-200 mots. Commencez par #1 en *gras*, puces brèves, source, une question."
         ),
         "portuguese": (
             f"A cliente {name} completou as 13 perguntas do Method Match. "
-            "Usando o perfil, CMC da OMS e diretrizes, recomende os 2-3 métodos contraceptivos "
-            "mais seguros. Comece com a recomendação #1 em *negrito*. Seja conciso (menos de 450 palavras), "
-            "use frases completas e nomeie métodos específicos."
+            "Recomende 2-3 métodos mais seguros segundo a CMC da OMS. "
+            "LIMITE ESTRITO: 50-200 palavras. Comece com #1 em *negrito*, bullets breves, fonte, uma pergunta."
         ),
     }
     return prompts.get(language, prompts["english"])
+
+
+def map_ussd_responses_to_firestore_user(responses: dict, phone: str, lang: str = "english") -> dict:
+    """Convert USSD numeric answers to the same Firestore shape WhatsApp uses."""
+    doc = {
+        "phone": phone,
+        "language": lang,
+        "name": responses.get("name") or "USSD Client",
+        "age": responses.get("age"),
+        "last_period": responses.get("last_period"),
+        "baby_under_6m": responses.get("baby_under_6m"),
+        "breastfeeding_only": responses.get("breastfeeding"),
+        "living_children": responses.get("children"),
+        "more_children": responses.get("more_children"),
+        "health_conditions": responses.get("health"),
+        "hiv_status": responses.get("hiv"),
+        "smoke": responses.get("smoke"),
+        "previous_use": responses.get("used_before"),
+        "stop_reason": responses.get("stop_reason"),
+        "partner_support": responses.get("partner"),
+        "facility_access": responses.get("facility_access"),
+        "sti_concern": responses.get("sti"),
+        "prefer_not_to_use": responses.get("prefer_not"),
+        "source": "ussd",
+    }
+    if responses.get("country"):
+        doc["country"] = responses.get("country")
+        doc["country_raw"] = responses.get("country_raw")
+        doc["country_match_confidence"] = responses.get("country_match_confidence")
+        doc["location_capture_purpose"] = "analytics_only"
+        doc["location_source"] = "ussd"
+    if responses.get("admin_area"):
+        doc["admin_area"] = responses.get("admin_area")
+        doc["admin_area_raw"] = responses.get("admin_area_raw")
+        doc["admin_area_type"] = responses.get("admin_area_type")
+    return doc
+
+
+def map_triage_form_to_user(data: dict) -> dict:
+    """Map provider triage wizard fields to a Firestore-compatible user dict."""
+    user_like = {
+        "age": data.get("age"),
+        "last_period": data.get("last_period"),
+        "baby_under_6m": "Yes" if "Yes" in str(data.get("nursing", "")) else "No",
+        "breastfeeding_only": "Yes" if "Less than" in str(data.get("nursing", "")) else "No",
+        "living_children": data.get("parity"),
+        "more_children": data.get("future_children"),
+        "health_conditions": "1" if "High" in str(data.get("blood_pressure", "")) else "7",
+        "hiv_status": data.get("hiv_status"),
+        "smoke": data.get("smoking"),
+        "previous_use": "No",
+        "partner_support": "Yes",
+        "facility_access": "Easy",
+        "sti_concern": "Yes" if "High" in str(data.get("sti_risk", "")) else "No",
+        "prefer_not_to_use": data.get("preference", ""),
+        "name": data.get("name"),
+        "phone": data.get("phone"),
+    }
+    health = str(data.get("health_history", "")).lower()
+    codes = []
+    if "migraine" in health:
+        codes.append("6")
+    if "liver" in health:
+        codes.append("4")
+    if "heart" in health:
+        codes.append("3")
+    if codes:
+        user_like["health_conditions"] = ",".join(codes)
+    return user_like
+
+
+def serializable_user_snapshot(user: dict) -> dict:
+    """Strip Firestore types and analytics geography for RQ job payloads."""
+    user = strip_analytics_fields(user)
+    safe = {}
+    for key, value in user.items():
+        if value is None or isinstance(value, (str, int, float, bool)):
+            safe[key] = value
+        elif isinstance(value, (list, dict)):
+            safe[key] = value
+        else:
+            safe[key] = str(value)
+    return safe

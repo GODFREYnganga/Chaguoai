@@ -5,6 +5,7 @@ WhatsApp delivery helpers: interactive menus, label truncation, and long-message
 from __future__ import annotations
 
 import json
+import re
 import time
 
 from twilio_templates import TwilioTemplateRegistry
@@ -12,6 +13,43 @@ from twilio_templates import TwilioTemplateRegistry
 WHATSAPP_BODY_LIMIT = 1500
 QUICK_REPLY_LABEL_LIMIT = 20
 LIST_ROW_LABEL_LIMIT = 24
+WHATSAPP_MAX_WORDS = 200
+WHATSAPP_MIN_WORDS = 50
+WEB_MAX_WORDS = 200
+
+
+def trim_to_word_count(text: str, max_words: int = WHATSAPP_MAX_WORDS) -> str:
+    """Trim text to max_words, ending at the last complete sentence when possible."""
+    text = re.sub(r"\s+", " ", str(text or "").strip())
+    if not text:
+        return text
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    trimmed = " ".join(words[:max_words])
+    for punct in (". ", "! ", "? "):
+        idx = trimmed.rfind(punct)
+        if idx > len(trimmed) // 2:
+            return trimmed[: idx + 1].strip()
+    return trimmed.rstrip(",;:") + "…"
+
+
+def format_recommendation_for_whatsapp(text: str, max_words: int = WHATSAPP_MAX_WORDS) -> str:
+    """Convert METHOD_CARD blocks or long clinical text into a concise WhatsApp message."""
+    raw = str(text or "").strip()
+    cards = re.findall(r"\[METHOD_CARD\]([\s\S]*?)\[/METHOD_CARD\]", raw, re.IGNORECASE)
+    if cards:
+        lines = []
+        for card in cards[:3]:
+            name = re.search(r"NAME:\s*(.+)", card, re.IGNORECASE)
+            summary = re.search(r"SUMMARY:\s*(.+)", card, re.IGNORECASE)
+            if name and summary:
+                lines.append(f"• *{name.group(1).strip()}* — {summary.group(1).strip()}")
+        if lines:
+            return trim_to_word_count("\n".join(lines), max_words=max_words)
+    cleaned = re.sub(r"\[/?METHOD_CARD\]", "", raw, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return trim_to_word_count(cleaned, max_words=max_words)
 
 
 def truncate_quick_reply_label(text: str, limit: int = QUICK_REPLY_LABEL_LIMIT) -> str:

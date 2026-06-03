@@ -161,6 +161,31 @@ SECTION G — LANGUAGE AND COMMUNICATION STANDARDS
 """.strip()
 
 
+def build_web_clinical_instruction() -> str:
+    """Appended to provider/clinician prompts to enforce structured card format."""
+    return (
+        "Respond for the CHW/clinician web dashboard.\n"
+        "Do NOT artificially shorten the clinical content. Be complete but organized.\n"
+        "You MUST output 2-3 [METHOD_CARD] blocks using this exact structure:\n"
+        "[METHOD_CARD]\n"
+        "NAME: [method name]\n"
+        "CATEGORY: [Implant/IUD/Injectable/Pill/Condom/etc]\n"
+        "SUMMARY: [one clear client-friendly sentence]\n"
+        "WHY_IT_FITS: [why this is allowed and suitable for this profile, including MEC category]\n"
+        "HOW_IT_WORKS: [short mechanism explanation]\n"
+        "HOW_TO_USE: [how the client starts/uses it and who provides it]\n"
+        "COMMON_SIDE_EFFECTS: [expected side effects and reassurance]\n"
+        "DURATION_OR_REVISIT: [how long it lasts or when to return]\n"
+        "REFERRAL_REQUIRED: [Yes or No]\n"
+        "REFERRAL_REASON: [facility/procedure reason if Yes, otherwise None]\n"
+        "FOLLOW_UP_SCHEDULE: [practical follow-up timing]\n"
+        "CITATIONS: [source IDs only, e.g. S1, S2]\n"
+        "[/METHOD_CARD]\n"
+        "After the cards, add one [CITATIONS] block listing each source ID, document title, "
+        "page if available, and section. Do not cite sources not provided in the retrieved context."
+    )
+
+
 def build_followup_prompt(
     user_message: str,
     method_in_use: str,
@@ -289,12 +314,14 @@ _RESPONSE_RULES_BLOCK = """
 
 3. STRUCTURE FOR WEB CHANNEL (METHOD CARDS):
    If the channel is 'web', you MUST wrap each recommended method in [METHOD_CARD] tags.
-   Format:
+   The dashboard renders these as expandable clinical cards — plain text will NOT display well.
+   Format exactly (no markdown inside tags):
    [METHOD_CARD]
-   NAME: [Exact Method Name]
-   SUMMARY: [1-sentence simple summary for quick reading]
-   DETAILS: [Full clinical explanation following rules 3a-3e below]
+   NAME: Implant (LNG)
+   SUMMARY: One sentence, max 25 words.
+   DETAILS: 40-60 words covering how it works, duration, side effects, clinical rationale, MEC category, citation.
    [/METHOD_CARD]
+   Repeat for 2-3 methods. Keep the entire response within 150-200 words.
 
 4. FOR EACH RECOMMENDED METHOD (DETAILS SECTION), COVER:
    a) What it is and how it works (1-2 sentences)
@@ -314,8 +341,8 @@ _RESPONSE_RULES_BLOCK = """
    "Source: Kenya FP Guidelines 7th Ed, 2025" or "Source: WHO MEC 6th Ed, 2025"
 
 7. END WITH AN OPEN QUESTION:
-   Always end by inviting the woman to ask more:
-   "Do you have questions about any of these options?"
+   WhatsApp: one short question (max 12 words), e.g. "Questions about these options?"
+   Web: no closing question needed — cards are the deliverable.
 
 8. IMAGES:
    If Section C contains "[CLINICAL FIGURE AVAILABLE: ...]",
@@ -488,25 +515,23 @@ def _get_channel_instruction(channel: str) -> str:
             "- Keep sentences very short. One idea per line."
         ),
         CHANNEL_WHATSAPP: (
-            "CHANNEL: WhatsApp — Smartphone. Richer formatting is acceptable.\n"
+            "CHANNEL: WhatsApp — Smartphone.\n"
             "Rules:\n"
-            "- Use *bold* for method names and important warnings\n"
-            "- Use numbered lists for steps\n"
-            "- Use bullet points (•) for lists of side effects or options\n"
-            "- Keep total response under 450 words unless the user explicitly asks for more detail\n"
-            "- NEVER cut off mid-sentence — finish every sentence you start\n"
-            "- For Method Match completions: name 2-3 specific methods; lead with #1 in *bold*\n"
-            "- Use emojis sparingly and only if they add clarity:\n"
-            "  ✅ for safe/recommended, ⚠️ for warnings, 🏥 for provider visits\n"
-            "- Leave a blank line between sections for readability"
+            "- Be concise and readable, but do not cut off important clinical instructions.\n"
+            "- Structure: 1-sentence greeting → #1 method in *bold* with one-line why → "
+            "2nd/3rd options as brief bullets → 1-sentence source + short follow-up question.\n"
+            "- Use *bold* for method names only; use • for bullet lists (max 3 bullets).\n"
+            "- NEVER cut off mid-sentence — finish every sentence you start.\n"
+            "- No long clinical paragraphs. No repeated profile facts.\n"
+            "- Use emojis sparingly: ✅ recommended, ⚠️ warning, 🏥 provider visit"
         ),
         CHANNEL_WEB: (
-            "CHANNEL: Web interface — Full screen dashboard.\n"
+            "CHANNEL: Web dashboard for CHWs and clinicians.\n"
             "Rules:\n"
-            "- Use [METHOD_CARD] tags (NAME:, SUMMARY:, DETAILS:) for each recommendation.\n"
-            "- Include source citations inline within the DETAILS block.\n"
-            "- Full Markdown supported.\n"
-            "- Maximum 1,200 words for initial recommendation."
+            "- You MUST output 2-3 methods using rich [METHOD_CARD] blocks — this is mandatory.\n"
+            "- Do not cap the response by word count; organize detail inside fields so the UI can collapse/expand.\n"
+            "- Include how to use, side effects, duration/revisit, referral needs, follow-up schedule, and citations.\n"
+            "- Use only citations from Section C source IDs."
         ),
     }
     return instructions.get(channel, instructions[CHANNEL_WHATSAPP])
