@@ -105,14 +105,7 @@
 
             <!-- Role: CHW - Client Roster -->
             <section id="view-chw-roster" class="content-section" style="display: none;">
-                <div class="alert" style="margin-bottom:1rem;background:#eff6ff;border:1px solid #bfdbfe;">
-                    <strong>Where to see method cards &amp; actions</strong>
-                    <ol style="margin:0.5rem 0 0 1.25rem;font-size:0.9rem;line-height:1.5;">
-                        <li><strong>Method Match</strong> (sidebar) → complete wizard → wait for result → cards with Select / Refer / Side effects.</li>
-                        <li><strong>My Clients</strong> → click a row → drawer shows the same cards for past matches.</li>
-                        <li>Restart <code>python worker.py</code> after code updates, then run a <strong>new</strong> match (old jobs may lack cards).</li>
-                    </ol>
-                </div>
+                
                 <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
                     <button class="btn btn-primary" onclick="showSection('chw-triage')">New Method Match</button>
                     <button class="btn btn-secondary" onclick="showSection('chw-qa')">Ask Clinical Question</button>
