@@ -97,7 +97,17 @@ def send_whatsapp_with_sms_fallback(from_number, to_number, body_text):
         return {"channel": "none", "status": "failed", "error": str(exc)}
 
 
-def send_twilio_content_message(from_number, to_number, content_sid, variables, *, option_count=0, mode=""):
+def send_twilio_content_message(
+    from_number,
+    to_number,
+    content_sid,
+    variables,
+    *,
+    option_count=0,
+    mode="",
+    **kwargs,
+):
+    """Send via Twilio Content API. Extra kwargs (language, redis_client, etc.) are ignored for compatibility."""
     return send_twilio_content(
         _get_twilio_client,
         from_number,
@@ -109,7 +119,15 @@ def send_twilio_content_message(from_number, to_number, content_sid, variables, 
     )
 
 
-def send_whatsapp_options(from_number, to_number, body_text, options, multi_select=False, button_text="Choose"):
+def send_whatsapp_options(
+    from_number,
+    to_number,
+    body_text,
+    options,
+    multi_select=False,
+    button_text="Choose",
+    language=None,
+):
     send_options_message(
         ensure_prefix=ensure_whatsapp_prefix,
         send_plain=send_whatsapp_message,
@@ -121,4 +139,5 @@ def send_whatsapp_options(from_number, to_number, body_text, options, multi_sele
         options=options,
         multi_select=multi_select,
         button_text=button_text,
+        language=language,
     )

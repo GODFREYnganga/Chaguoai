@@ -195,13 +195,13 @@ def build_method_match_user_message(user: dict, language: str = "english") -> st
             f"The client {name} has completed all 13 Method Match questions. "
             "Using Section A (profile), Section B (WHO MEC), and Section C (guidelines), "
             "recommend the TOP 2-3 safest contraceptive methods. "
-            "STRICT LIMIT: 50-150 words total. "
-            "Start with #1 in *bold*, then brief bullets for options 2-3, one source line, one short question."
+            "Write a COMPLETE message of at least 50 words (up to 250). "
+            "Do not stop mid-sentence. Start with #1 in *bold*, then bullets for options 2-3, source line, one short question."
         ),
         "swahili": (
             f"Mteja {name} amemaliza maswali 13 ya Method Match. "
             "Pendekeza njia 2-3 salama zaidi kutoka WHO MEC. "
-            "KIKOMO: maneno 50-150 tu. Anza na #1 kwa *bold*, kisha bullets fupi, chanzo, swali moja."
+            "Andika ujumbe KAMILI wa angalau maneno 50 (hadi 250). Usisimamishe katikati. Anza na #1 kwa *bold*, bullets, chanzo, swali moja."
         ),
         "french": (
             f"La cliente {name} a terminé les 13 questions Method Match. "

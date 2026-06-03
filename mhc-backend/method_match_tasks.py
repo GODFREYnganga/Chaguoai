@@ -25,7 +25,13 @@ def process_whatsapp_method_match_job(user_phone, to_number, lang, user_snapshot
     print(f"[{user_phone}] method_match_job: started")
     try:
         reply_text, mec_text = generate_whatsapp_recommendation(user)
-        print(f"[{user_phone}] method_match_job: sending reply ({len(reply_text.split())} words)")
+        words = len(reply_text.split())
+        print(f"[{user_phone}] method_match_job: sending reply ({words} words, {len(reply_text)} chars)")
+        if words < 40:
+            print(
+                f"[{user_phone}] WARNING: reply still short after Gemini — "
+                "check WHATSAPP_MAX_OUTPUT_TOKENS in .env (use 2048+) and restart worker"
+            )
         send_long_whatsapp_message(send_whatsapp_message, to_number, user_phone, reply_text)
 
         db.collection("contraceptive_users").document(user_phone).update({

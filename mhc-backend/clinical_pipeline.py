@@ -1,7 +1,11 @@
 import re
 from typing import Any
 
-from app_config import WHATSAPP_MAX_OUTPUT_TOKENS, WEB_PROVIDER_MAX_OUTPUT_TOKENS
+from app_config import (
+    WHATSAPP_MAX_OUTPUT_TOKENS,
+    WHATSAPP_RECOMMENDATION_MAX_WORDS,
+    WEB_PROVIDER_MAX_OUTPUT_TOKENS,
+)
 from gemini_client import generate_gemini_text
 from rag_ingestor import get_retriever
 from rag_prompt import build_system_prompt, format_user_profile_for_prompt, build_web_clinical_instruction
@@ -19,6 +23,81 @@ from response_cards import (
     parse_method_cards,
     resolve_method_cards,
 )
+
+
+def _avoid_tokens_from_profile(user: dict) -> set[str]:
+    """Best-effort filter so deterministic WhatsApp fallback respects stated dislikes."""
+    raw = str(user.get("prefer_not_to_use") or "").lower()
+    tokens: set[str] = set()
+    if "1" in raw or "pill" in raw:
+        tokens.add("pill")
+    if "2" in raw or "inject" in raw:
+        tokens.add("inject")
+    if "3" in raw or "iud" in raw or "iucd" in raw:
+        tokens.add("iud")
+    if "4" in raw or "implant" in raw:
+        tokens.add("implant")
+    return tokens
+
+
+def _build_whatsapp_fallback_recommendation(user: dict, mec_text: str, language: str) -> str:
+    """
+    Deterministic Method Match response when Gemini returns an unusably short answer.
+    Uses only methods already classified as safe by the WHO MEC engine.
+    """
+    name = user.get("name") or "there"
+    cards = build_fallback_method_cards(mec_text=mec_text, limit=5)
+    avoid = _avoid_tokens_from_profile(user)
+    filtered = []
+    for card in cards:
+        haystack = f"{card.get('name', '')} {card.get('category', '')}".lower()
+        if avoid and any(token in haystack for token in avoid):
+            continue
+        filtered.append(card)
+    cards = (filtered or cards)[:3]
+
+    if not cards:
+        if language == "swahili":
+            return (
+                f"Habari {name}, nimekagua majibu yako lakini siwezi kupata njia salama ya kupendekeza moja kwa moja sasa. "
+                "Tafadhali zungumza na mhudumu wa afya ili akague historia yako na kukusaidia kuchagua njia inayofaa. "
+                "Ukitaka, unaweza pia kujibu MENU kuanza tena."
+            )
+        return (
+            f"Hello {name}, I reviewed your answers but could not identify a safe method to recommend directly right now. "
+            "Please discuss your profile with a trained health worker so they can help you choose safely. "
+            "You can also reply MENU to start again."
+        )
+
+    if language == "swahili":
+        lines = [
+            f"Habari {name}, kulingana na majibu yako, hizi ni njia salama zaidi kuzingatia:",
+        ]
+        for idx, card in enumerate(cards, start=1):
+            referral = " Inahitaji mhudumu aliyefunzwa kwa kuanza/kuweka." if card.get("referral_required") else ""
+            lines.append(
+                f"#{idx} *{card.get('name')}*: {card.get('why_it_fits') or card.get('summary')} "
+                f"{card.get('common_side_effects') or ''}{referral}"
+            )
+        lines.append(
+            "Chanzo: WHO MEC 6th Edition na Kenya FP Guidelines. Je, ungependa kuzungumza na CHW kuhusu mojawapo ya hizi?"
+        )
+        return "\n\n".join(lines)
+
+    lines = [
+        f"Hello {name}, based on your health profile, these are medically safe options to discuss:",
+    ]
+    for idx, card in enumerate(cards, start=1):
+        referral = " It needs a trained provider for starting or insertion." if card.get("referral_required") else ""
+        side_effects = card.get("common_side_effects") or "Side effects vary, so ask your CHW what to expect."
+        lines.append(
+            f"#{idx} *{card.get('name')}*: {card.get('why_it_fits') or card.get('summary')} "
+            f"Common side effects can include {side_effects.lower()}{referral}"
+        )
+    lines.append(
+        "Source: WHO MEC 6th Edition and Kenya FP Guidelines. Which option would you like to ask your CHW about?"
+    )
+    return "\n\n".join(lines)
 
 
 def build_retrieval_citations(chunks: list[dict]) -> list[dict]:
@@ -109,11 +188,34 @@ def generate_whatsapp_recommendation(user: dict, *, user_message: str | None = N
         language=language,
         user_name=user.get("name", ""),
     )
+    full_prompt = f"{sys_prompt}\n\nUser Message: {prompt_message}"
     reply_text = generate_gemini_text(
-        f"{sys_prompt}\n\nUser Message: {prompt_message}",
+        full_prompt,
         max_output_tokens=WHATSAPP_MAX_OUTPUT_TOKENS,
+        disable_thinking=True,
     )
-    reply_text = trim_to_word_count(reply_text, max_words=150)
+    word_count = len(reply_text.split())
+    print(f"[{user_phone}] method_match: gemini raw reply ({word_count} words)")
+    if word_count < 40:
+        print(f"[{user_phone}] method_match: retrying — first reply was too short")
+        retry_prompt = (
+            f"{full_prompt}\n\n"
+            "Your previous answer was too short. Write a COMPLETE WhatsApp message "
+            "of at least 80 words: greet by name, recommend 2-3 named contraceptive "
+            "methods with brief reasons, cite guidelines, end with one short question."
+        )
+        reply_text = generate_gemini_text(
+            retry_prompt,
+            max_output_tokens=WHATSAPP_MAX_OUTPUT_TOKENS,
+            disable_thinking=True,
+        )
+        print(f"[{user_phone}] method_match: gemini retry ({len(reply_text.split())} words)")
+
+    if len(reply_text.split()) < 40:
+        print(f"[{user_phone}] method_match: using deterministic MEC fallback")
+        reply_text = _build_whatsapp_fallback_recommendation(user, mec_text, language)
+
+    reply_text = trim_to_word_count(reply_text, max_words=WHATSAPP_RECOMMENDATION_MAX_WORDS)
     if not reply_text.strip():
         raise RuntimeError("Gemini returned an empty recommendation")
     return reply_text.strip(), mec_text
@@ -149,8 +251,9 @@ def generate_whatsapp_chat_reply(user: dict, incoming_msg: str) -> str:
     reply_text = generate_gemini_text(
         f"{sys_prompt}\n\nUser Message: {incoming_msg}",
         max_output_tokens=WHATSAPP_MAX_OUTPUT_TOKENS,
+        disable_thinking=True,
     )
-    return trim_to_word_count(reply_text, max_words=150)
+    return trim_to_word_count(reply_text, max_words=WHATSAPP_RECOMMENDATION_MAX_WORDS)
 
 
 def generate_provider_triage_recommendation(user: dict, client_data_json: str) -> tuple[str, str, list[dict], list[dict[str, Any]]]:
@@ -183,6 +286,7 @@ def generate_provider_triage_recommendation(user: dict, client_data_json: str) -
     recommendation = generate_gemini_text(
         full_query,
         max_output_tokens=max(WEB_PROVIDER_MAX_OUTPUT_TOKENS, 1800),
+        disable_thinking=True,
     )
     if not recommendation.strip():
         raise RuntimeError("Gemini returned an empty web recommendation")

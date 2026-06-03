@@ -175,12 +175,9 @@ def dispatch_whatsapp_method_match(user_phone, to_number, lang, user_snapshot):
     })
 
     try:
-        job = get_triage_queue().enqueue(
-            "method_match_tasks.process_whatsapp_method_match_job",
-            user_phone,
-            to_number,
-            lang,
-            payload,
+        job = get_triage_queue().enqueue_call(
+            func=process_whatsapp_method_match_job,
+            args=(user_phone, to_number, lang, payload),
             timeout=TRIAGE_JOB_TIMEOUT_SECONDS,
             result_ttl=TRIAGE_JOB_RESULT_TTL_SECONDS,
             failure_ttl=TRIAGE_JOB_FAILURE_TTL_SECONDS,
@@ -628,7 +625,7 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
  
         if stage == "AWAITING_Q5_MORE_CHILDREN":
             db.collection('contraceptive_users').document(user_phone).update({"more_children": incoming_msg.strip(), "stage": "AWAITING_Q6_HEALTH"})
-            send_whatsapp_options(to_number, user_phone, question_body(q["q6"]), HEALTH_CONDITION_OPTIONS, multi_select=True, button_text="Conditions")
+            send_whatsapp_options(to_number, user_phone, question_body(q["q6"]), HEALTH_CONDITION_OPTIONS, multi_select=True, button_text="Conditions", language=lang)
             return
  
         if stage == "AWAITING_Q6_HEALTH":
@@ -672,7 +669,7 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
 
         if stage == "AWAITING_Q12_STI":
             db.collection('contraceptive_users').document(user_phone).update({"sti_concern": incoming_msg.strip(), "stage": "AWAITING_Q13_PREFERENCES"})
-            send_whatsapp_options(to_number, user_phone, question_body(q["q13"]), METHOD_AVOID_OPTIONS, multi_select=True, button_text="Methods")
+            send_whatsapp_options(to_number, user_phone, question_body(q["q13"]), METHOD_AVOID_OPTIONS, multi_select=True, button_text="Methods", language=lang)
             return
 
         if stage == "AWAITING_Q13_PREFERENCES":

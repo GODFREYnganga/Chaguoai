@@ -13,13 +13,13 @@ from twilio_templates import TwilioTemplateRegistry
 WHATSAPP_BODY_LIMIT = 1500
 QUICK_REPLY_LABEL_LIMIT = 20
 LIST_ROW_LABEL_LIMIT = 24
-WHATSAPP_MAX_WORDS = 200
+WHATSAPP_MAX_WORDS = 250
 WHATSAPP_MIN_WORDS = 50
 WEB_MAX_WORDS = 200
 
 
 def trim_to_word_count(text: str, max_words: int = WHATSAPP_MAX_WORDS) -> str:
-    """Trim text to max_words, ending at the last complete sentence when possible."""
+    """Trim only when over max_words; prefer ending at a sentence boundary."""
     text = re.sub(r"\s+", " ", str(text or "").strip())
     if not text:
         return text
@@ -29,7 +29,8 @@ def trim_to_word_count(text: str, max_words: int = WHATSAPP_MAX_WORDS) -> str:
     trimmed = " ".join(words[:max_words])
     for punct in (". ", "! ", "? "):
         idx = trimmed.rfind(punct)
-        if idx > len(trimmed) // 2:
+        # Do not cut to a tiny fragment (e.g. greeting-only) before the real recommendation.
+        if idx > len(trimmed) // 2 and (trimmed[: idx + 1].count(" ") + 1) >= WHATSAPP_MIN_WORDS:
             return trimmed[: idx + 1].strip()
     return trimmed.rstrip(",;:") + "…"
 
@@ -168,6 +169,13 @@ def send_twilio_content(
         return False
 
 
+def _multi_select_tip(language: str | None) -> str:
+    lang = str(language or "").lower()
+    if lang in ("sw", "swahili", "2"):
+        return "_Kidokezo: Kwa michaguo mingi, jawabu na namba kama 1,3._"
+    return "_Tip: For multiple selections, reply with numbers like 1,3._"
+
+
 def send_options_message(
     *,
     ensure_prefix,
@@ -180,6 +188,9 @@ def send_options_message(
     options: list[str],
     multi_select: bool = False,
     button_text: str = "Choose",
+    language: str | None = None,
+    redis_client=None,
+    firestore_client=None,
 ) -> None:
     """
     Send interactive WhatsApp options using size-matched Twilio Content templates.
@@ -214,11 +225,7 @@ def send_options_message(
 
         if _send(content_sid, variables, len(options), mode):
             if multi_select:
-                send_plain(
-                    from_number,
-                    to_number,
-                    "_Tip: For multiple selections, reply with numbers like 1,3._",
-                )
+                send_plain(from_number, to_number, _multi_select_tip(language))
             return
 
         # Exact template failed — try list picker as secondary path for 2–3 option questions
@@ -234,11 +241,7 @@ def send_options_message(
                 )
                 if _send(list_sid, list_vars, len(options), list_mode):
                     if multi_select:
-                        send_plain(
-                            from_number,
-                            to_number,
-                            "_Tip: For multiple selections, reply with numbers like 1,3._",
-                        )
+                        send_plain(from_number, to_number, _multi_select_tip(language))
                     return
 
     send_plain(from_number, to_number, fallback_option_message(body_text, options, multi_select=multi_select))

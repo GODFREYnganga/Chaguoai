@@ -7,7 +7,9 @@ load_dotenv()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_TIMEOUT_MS = int(os.environ.get("GEMINI_TIMEOUT_MS", "20000"))
 GEMINI_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "900"))
-WHATSAPP_MAX_OUTPUT_TOKENS = int(os.environ.get("WHATSAPP_MAX_OUTPUT_TOKENS", "220"))
+# WhatsApp: allow full Method Match replies (split across bubbles if >1500 chars).
+WHATSAPP_MAX_OUTPUT_TOKENS = int(os.environ.get("WHATSAPP_MAX_OUTPUT_TOKENS", "2048"))
+WHATSAPP_RECOMMENDATION_MAX_WORDS = int(os.environ.get("WHATSAPP_RECOMMENDATION_MAX_WORDS", "250"))
 WEB_PROVIDER_MAX_OUTPUT_TOKENS = int(os.environ.get("WEB_PROVIDER_MAX_OUTPUT_TOKENS", "1400"))
 GEMINI_RETRY_ATTEMPTS = int(os.environ.get("GEMINI_RETRY_ATTEMPTS", "1"))
 

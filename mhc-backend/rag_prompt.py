@@ -517,9 +517,9 @@ def _get_channel_instruction(channel: str) -> str:
         CHANNEL_WHATSAPP: (
             "CHANNEL: WhatsApp — Smartphone.\n"
             "Rules:\n"
-            "- Be concise and readable, but do not cut off important clinical instructions.\n"
-            "- Structure: 1-sentence greeting → #1 method in *bold* with one-line why → "
-            "2nd/3rd options as brief bullets → 1-sentence source + short follow-up question.\n"
+            "- Write at least 50 words and up to 250 words. NEVER stop after only a greeting or profile recap.\n"
+            "- Structure: brief greeting with name → #1 method in *bold* with why it fits → "
+            "2nd/3rd options as bullets → one source line → short follow-up question.\n"
             "- Use *bold* for method names only; use • for bullet lists (max 3 bullets).\n"
             "- NEVER cut off mid-sentence — finish every sentence you start.\n"
             "- No long clinical paragraphs. No repeated profile facts.\n"
