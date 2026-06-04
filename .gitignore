@@ -19,6 +19,23 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Runtime/generated databases and indexes
+*.sqlite3
+*.db
+mhc-backend/knowledge_base/chroma_db/
+
+# ML raw data and generated artifacts
+chaguoai_model/data/raw/
+chaguoai_model/outputs/processed/
+chaguoai_model/outputs/models/
+chaguoai_model/outputs/figures/
+*.parquet
+*.pkl
+
+# Local model/vector artifacts
+model_artifacts/
+vector_store/
+
 # Editor / IDEs
 .vscode/
 .idea/

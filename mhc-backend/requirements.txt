@@ -43,7 +43,9 @@ functions-framework==3.10.1
 
 # Data Processing & Analytics
 numpy==2.2.3
+pandas==3.0.3
 scikit-learn==1.6.1
+lightgbm==4.6.0
 
 # PDF & Export
 pypdf==5.3.1

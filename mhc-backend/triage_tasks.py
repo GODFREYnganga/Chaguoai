@@ -7,9 +7,11 @@ from db_client import get_db
 from fhir_utils import to_fhir_patient
 from twilio_messaging import send_long_whatsapp_message, send_whatsapp_message
 from method_categories import classify_method_category_primary
+from recommendation_packet import build_recommendation_packet
 from user_profile_mapper import map_triage_form_to_user
 from whatsapp_helpers import format_recommendation_for_whatsapp
 from app_config import TWILIO_NUMBER
+from audit_trail import record_audit_event
 
 
 from geography import strip_analytics_fields
@@ -42,12 +44,21 @@ def process_triage_job(job_id, data):
         send_long_whatsapp_message(send_whatsapp_message, TWILIO_NUMBER, phone, sms_body)
 
         fhir_view = to_fhir_patient(data)
+        client_context = {**data, **user, "phone": phone}
+        packet = build_recommendation_packet(
+            client=client_context,
+            recommendation_text=recommendation,
+            mec_text=mec_text,
+            citations=citations,
+            method_cards=method_cards,
+        )
         job_ref.update({
             "status": "completed",
             "recommendation": recommendation,
             "mec_result": mec_text,
             "recommendation_citations": citations,
             "method_cards": method_cards,
+            "recommendation_packet": packet,
             "fhir_view": fhir_view,
             "completed_at": firestore.SERVER_TIMESTAMP,
         })
@@ -59,9 +70,17 @@ def process_triage_job(job_id, data):
             "method_category_primary": classify_method_category_primary(recommendation),
             "recommendation_citations": citations,
             "method_cards": method_cards,
+            "recommendation_packet": packet,
             "latest_mec_result": mec_text,
             "triage_completed_at": firestore.SERVER_TIMESTAMP,
         }, merge=True)
+        record_audit_event(
+            db=get_db(),
+            phone=phone,
+            actor=data.get("assigned_provider_id") or "system",
+            action="recommendation_generated",
+            metadata={"job_id": job_id, "channel": "provider", "method_count": len(method_cards or [])},
+        )
     except Exception as exc:
         error_message = str(exc)
         print(f"Triage job {job_id} failed: {error_message}")

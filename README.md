@@ -9,7 +9,7 @@ ChaguoAI is a professional-grade clinical decision support system (DSS) designed
 - **Cross-Lingual Support:** Native support for English, Swahili, French, and Portuguese.
 - **Unified Provider Portal:** A professional web interface for Community Health Workers (CHWs) and Clinicians to manage user rosters and run advanced assessments.
 - **Multi-Channel Delivery:** Seamless interaction across WhatsApp (Twilio), USSD (Africa's Talking), and Web.
-- **Analytics Geography:** Optional country and region capture for dashboards only — never used in WHO MEC or Method Match logic. See [mhc-docs/geography.md](mhc-docs/geography.md).
+- **Analytics Geography:** Optional country and region capture for dashboards only — never used in WHO MEC or Method Match logic. See [docs/geography.md](docs/geography.md).
 
 ## Architecture
 
@@ -26,21 +26,23 @@ The system follows a strict clinical safety pipeline:
 
 ### 2. Installation
 ```bash
-git clone https://github.com/your-repo/ChaguoAI.git
-cd ChaguoAI/mhc-backend
+git clone <your-fork-or-upstream-url>
+cd Contraceptives_DSS/mhc-backend
 pip install -r requirements.txt
 ```
 
 ### 3. Configuration
 1. Copy `mhc-backend/.env.example` to `mhc-backend/.env`.
 2. Populate the `.env` file with your API keys and project IDs.
-3. Place your Firebase `serviceAccountKey.json` in the `mhc-backend/` directory.
+3. Set `GOOGLE_APPLICATION_CREDENTIALS` to a Firebase service account path outside the repository, or provide inline JSON through your deployment secret manager.
+4. Set a strong `FLASK_SECRET_KEY` and `ADMIN_ACCESS_CODE`; production startup/login should not rely on defaults.
 
 ### 4. Build the Knowledge Base
 Run the ingestor to process the clinical PDFs into the vector store:
 ```bash
 python rag_ingestor.py
 ```
+The clinical PDFs are not committed to the open-source repository. Place them in `mhc-knowledge/` or update the `KENYA_FP_PDF`, `WHO_MEC_PDF`, and `WHO_SPR_PDF` environment variables.
 
 ### 5. Start the Server
 ```bash
@@ -71,11 +73,15 @@ Render setup:
 - Worker service start command: `python worker.py`
 - Both services must use the same `REDIS_URL`, Firebase credentials, Gemini credentials, and Twilio credentials.
 
-### 7. WhatsApp Interactive Menus (Buttons)
+### 7. Security-sensitive webhooks
+
+Twilio webhooks validate `X-Twilio-Signature` when `TWILIO_AUTH_TOKEN` is configured. For local ngrok testing, set `PUBLIC_BASE_URL` to the exact public URL Twilio calls. Do not disable signature validation in production.
+
+### 8. WhatsApp Interactive Menus (Buttons)
 
 Buttons require **Twilio Content templates** — one template per option count. A 3-button template will **not** work for Yes/No (2 options) or the 5-item main menu.
 
-**Full setup guide:** [mhc-docs/twilio_content_templates.md](mhc-docs/twilio_content_templates.md)
+**Full setup guide:** [docs/twilio_content_templates.md](docs/twilio_content_templates.md)
 
 Create these five templates in Twilio Console → Content Template Builder:
 
@@ -100,28 +106,33 @@ Main WhatsApp menu:
 
 Single-choice survey questions use quick replies when they have 2-3 options and list pickers when they have 4+ options. Multi-select questions (Q6, Q13) use list pickers; reply with numbers like `1,3` for multiple selections.
 
-See also: [mhc-docs/twilio_setup.md](mhc-docs/twilio_setup.md) for webhook/ngrok setup.
+See also: [docs/twilio_setup.md](docs/twilio_setup.md) for webhook/ngrok setup.
 
-### 8. Geography (analytics only)
+### 9. Geography (analytics only)
 
 WhatsApp users **type** country and region (no long list menus). The CHW provider portal uses a **dropdown** of 54 African countries plus a text field for region. USSD collects geography **before** the 13 clinical questions.
 
-Full design, Firestore fields, and APIs: [mhc-docs/geography.md](mhc-docs/geography.md).
+Full design, Firestore fields, and APIs: [docs/geography.md](docs/geography.md).
 
 Run geography unit tests:
 
 ```bash
-cd mhc-backend
-python -m unittest test_geography.py -v
+python -m unittest discover -s tests/unit -t . -v -p "test_geography.py"
 ```
 
 ## Project Structure
 
-- `mhc-backend/`: Core logic (Flask server, RAG logic, and WHO MEC engine).
-- **`mhc-dashboard/`**: Centralized HTML templates (Provider and Admin portals).
-- **`static/`**: Global assets (CSS, JS, and clinical media).
-- `mhc-knowledge/`: Official Clinical PDF guidelines for RAG retrieval.
-- `mhc-docs/`: Technical deployment guides.
+- `mhc-backend/`: Flask application (`application.py`, `main.py` entrypoint).
+  - `routes/`: HTTP route handlers grouped by public, admin, and provider APIs.
+  - `core/`: Shared HTTP, auth, and serialization helpers.
+  - `whatsapp/`: WhatsApp survey constants, helpers, and webhook flow.
+- `mhc-dashboard/`: HTML templates for provider and admin portals.
+- `static/`: Global CSS, JS, and clinical media assets.
+- `tests/unit/` and `tests/integration/`: Offline and opt-in live tests.
+- `config/`: Environment template (`config/.env.example` → copy to `mhc-backend/.env`).
+- `docs/`: Technical deployment guides and schema documentation.
+- `mhc-knowledge/`: Local-only clinical PDFs for RAG retrieval (not committed).
+- `chaguoai_model/`: Optional ML training project; raw data and generated outputs are gitignored.
 
 ## Accessing the Dashboards
 
@@ -135,11 +146,36 @@ For community health workers to perform triage and manage rosters.
 ### 2. Admin Portal
 For system administrators to approve providers and view analytics.
 - **URL:** `/admin` → `/admin/portal` after login
-- **Access Code:** `ADMIN2026` (or `ADMIN_CODE` env)
-- **Dashboard guide:** [mhc-docs/dashboards.md](mhc-docs/dashboards.md)
+- **Access Code:** Set `ADMIN_ACCESS_CODE` in the environment.
+- **Dashboard guide:** [docs/dashboards.md](docs/dashboards.md)
 
 > [!IMPORTANT]
-> The Admin Access Code is required to enter the protected management area. In a production setting, this should be set via the `ADMIN_SECRET` environment variable.
+> The Admin Access Code is required to enter the protected management area. Set it via the `ADMIN_ACCESS_CODE` environment variable and do not commit real codes.
+
+## Running Tests
+
+Offline unit tests should pass without live external credentials:
+
+```bash
+python -m unittest discover -s tests/unit -t . -v -p "test_*.py"
+```
+
+Live Gemini/Twilio/Firebase checks are integration tests and should be gated by environment variables, for example:
+
+```bash
+RUN_INTEGRATION_TESTS=1 python -m unittest discover -s tests/integration -t . -v -p "test_*.py"
+```
+
+## Optional Adherence Model
+
+The adherence/discontinuation model runs downstream of WHO MEC filtering and is optional. Set `CHAGUOAI_ADHERENCE_MODEL_DIR` to a folder containing:
+
+- `models/05_best_model.pkl`
+- `models/05_best_model_metadata.json`
+- `processed/04_encoders.pkl`
+- `processed/04_feature_meta.json`
+
+If artifacts are missing, the app remains functional and marks the adherence model as unavailable.
 
 ---
 **Disclaimer:** ChaguoAI provides clinical decision support and is NOT a substitute for professional medical advice. Always consult a healthcare provider for prescriptions.

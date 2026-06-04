@@ -170,7 +170,10 @@
                             <h3 class="panel-title">Clients needing follow-up</h3>
                             <p class="panel-subtitle">Grouped by client — use Send follow-up next to each name.</p>
                         </div>
-                        <button class="btn btn-secondary btn-sm" onclick="loadFollowups()">Refresh</button>
+                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                            <button class="btn btn-secondary btn-sm" onclick="runFollowupAutomation()">Run automation</button>
+                            <button class="btn btn-secondary btn-sm" onclick="loadFollowups()">Refresh</button>
+                        </div>
                     </div>
                     <div id="followups-client-list"></div>
                     <details style="margin-top:1rem;">
@@ -260,6 +263,18 @@
                 </div>
             </section>
 
+            <section id="view-clinician-review" class="content-section" style="display: none;">
+                <div class="card" style="max-width: 1000px; margin: 0 auto;">
+                    <h3>Clinician Review Panel</h3>
+                    <p class="muted">Review MEC rationale, confidence reasoning, excluded methods, overrides, referrals, and audit history.</p>
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:1rem 0;">
+                        <input id="clinical-review-phone" class="input" style="flex:1;min-width:260px;" placeholder="Client phone e.g. +254..." />
+                        <button class="btn btn-primary" onclick="loadClinicalReview()">Open Review</button>
+                    </div>
+                    <div id="clinical-review-result"></div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -278,6 +293,9 @@
     </aside>
 
     <script src="/static/js/dashboard-ui.js"></script>
+    <script src="/static/js/provider-recommendations.js"></script>
+    <script src="/static/js/provider-clients.js"></script>
+    <script src="/static/js/provider-followups.js"></script>
     <script>
         let currentProvider = null;
         let selectedLang = 'en';
@@ -426,7 +444,10 @@
                     <a href="#" class="nav-item" onclick="showSection('chw-qa')">General Q&A</a>
                 `;
             } else {
-                nav.innerHTML = `<a href="#" class="nav-item active" onclick="showSection('clinician-mec')">MEC Analyzer</a>`;
+                nav.innerHTML = `
+                    <a href="#" class="nav-item active" onclick="showSection('clinician-mec')">MEC Analyzer</a>
+                    <a href="#" class="nav-item" onclick="showSection('clinician-review')">Clinician Review</a>
+                `;
             }
         }
 
@@ -437,6 +458,7 @@
             'chw-side-effects': 'Side Effects',
             'chw-qa': 'Clinical Q&A',
             'clinician-mec': 'MEC Analyzer',
+            'clinician-review': 'Clinician Review',
         };
 
         function showSection(sectionId) {
@@ -572,6 +594,31 @@
             ].filter(([, value]) => value).map(([label, value]) =>
                 `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`
             ).join('');
+            const confidence = card.confidence || {};
+            const confidenceReasons = confidence.confidence_reasons || confidence.reasons || [];
+            const confidenceHtml = confidence.score ? `
+                <div style="margin:0.5rem 0;padding:0.65rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+                    <strong>Confidence:</strong> ${escapeHtml(confidence.level || 'Moderate')} (${escapeHtml(confidence.score)}%)
+                    ${confidenceReasons.length ? `<div class="muted" style="font-size:0.85rem;margin-top:0.35rem;">Why: ${confidenceReasons.map((r) => `✓ ${escapeHtml(r)}`).join(' · ')}</div>` : ''}
+                </div>
+            ` : '';
+            const adherence = card.adherence_prediction || {};
+            const supportLabel = adherence.continuation_support_needed || (
+                adherence.adherence_risk_level === 'high' ? 'High' :
+                adherence.adherence_risk_level === 'moderate' ? 'Medium' :
+                adherence.adherence_risk_level === 'low' ? 'Low' : ''
+            );
+            const adherenceHtml = adherence.available ? `
+                <div style="margin:0.5rem 0;padding:0.65rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;">
+                    <strong>Continuation support needed:</strong> ${escapeHtml(supportLabel)}
+                    <div class="muted" style="font-size:0.85rem;margin-top:0.35rem;">
+                        Predicted continuation: ${Math.round((adherence.adherence_score || 0) * 100)}%.
+                        ${adherence.adherence_reasons?.length ? `Why: ${adherence.adherence_reasons.map((r) => `✓ ${escapeHtml(r)}`).join(' · ')}` : ''}
+                    </div>
+                </div>
+            ` : (adherence.reason ? `
+                <div class="muted" style="font-size:0.8rem;margin:0.4rem 0;">Continuation model: ${escapeHtml(adherence.reason)}</div>
+            ` : '');
             return `
                 <div class="method-card" data-method="${methodAttr}" data-referral="${referralAttr}">
                     <div class="card-header">
@@ -583,8 +630,11 @@
                     </div>
                     <div class="card-body">
                         <p class="card-summary"><strong>Quick take:</strong> ${escapeHtml(card.summary)}</p>
+                        ${confidenceHtml}
+                        ${adherenceHtml}
                         <div class="method-action-row">
-                            <button class="btn btn-primary btn-sm" data-method="${methodAttr}" data-referral="${referralAttr}" onclick="selectMethodFromCard(this)">Select method</button>
+                            <button class="btn btn-secondary btn-sm" data-method="${methodAttr}" onclick="askAboutMethodFromButton(this)">Ask question</button>
+                            <button class="btn btn-primary btn-sm" data-method="${methodAttr}" data-referral="${referralAttr}" onclick="selectMethodFromCard(this)">Confirm Client Choice</button>
                             <button class="btn btn-secondary btn-sm" data-method="${methodAttr}" onclick="createReferralFromButton(this)">Refer</button>
                             <button class="btn btn-secondary btn-sm" onclick="showSideEffectsFromCard(this)">Side effects</button>
                             <button class="btn btn-secondary btn-sm" onclick="toggleCardDetails(this)">Read more</button>
@@ -615,6 +665,28 @@
             createReferralForMethod(methodName);
         }
 
+        async function askAboutMethodFromButton(button) {
+            const methodName = button.getAttribute('data-method');
+            const phone = currentClientPhone || triageData.phone;
+            if (!phone) return alert('Client phone is missing.');
+            const question = prompt(`Ask about ${methodName}:`, 'Will this affect bleeding or fertility?');
+            if (!question) return;
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/methods/question`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ method_name: methodName, question }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not answer question');
+                const details = button.closest('.method-card').querySelector('.card-details');
+                details.style.display = 'block';
+                details.innerHTML = `<p><strong>Question:</strong> ${escapeHtml(question)}</p><p><strong>Answer:</strong> ${escapeHtml(data.answer || '')}</p>` + details.innerHTML;
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
         function toggleMecVerification(el) {
             const box = el.nextElementSibling;
             const isVisible = box.style.display === 'block';
@@ -636,6 +708,8 @@
                 referral_reason: card.referral_reason || '',
                 follow_up_schedule: card.follow_up_schedule || '',
                 citations: card.citations || '',
+                confidence: card.confidence || null,
+                adherence_prediction: card.adherence_prediction || null,
             };
         }
 
@@ -753,7 +827,7 @@
                     ${methods.map(m => `
                         <div class="method-action-row fallback-method-row">
                             <strong style="min-width:160px;">${escapeHtml(m.name)}</strong>
-                            <button class="btn btn-primary btn-sm" data-method="${escapeHtml(m.name)}" data-referral="${m.referral ? 'yes' : 'no'}" onclick="selectMethodFromCard(this)">Select method</button>
+                            <button class="btn btn-primary btn-sm" data-method="${escapeHtml(m.name)}" data-referral="${m.referral ? 'yes' : 'no'}" onclick="selectMethodFromCard(this)">Confirm Client Choice</button>
                             <button class="btn btn-secondary btn-sm" data-method="${escapeHtml(m.name)}" onclick="createReferralFromButton(this)">Refer</button>
                             <button class="btn btn-secondary btn-sm" onclick="alert('Open Read more or use the method library after selection for side effects and follow-up guidance.')">Side effects</button>
                         </div>
@@ -767,7 +841,9 @@
             currentClientPhone = triageData.phone || currentClientPhone || '';
 
             const rawRec = data.recommendation || data.result || "";
-            const cardCount = (data.method_cards || []).length || data.method_cards_count || 0;
+            const displayCards = data.recommendation_packet?.recommended_methods || data.method_cards || [];
+            const cardCount = (displayCards || []).length || data.method_cards_count || 0;
+            const packetHtml = window.ProviderRecommendations?.renderPacket(data.recommendation_packet) || '';
             const statusHint = cardCount
                 ? `<p class="muted" style="font-size:0.85rem;">${cardCount} method option(s) ready — use the buttons on each card.</p>`
                 : `<p style="font-size:0.85rem;padding:0.75rem;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;">No structured cards in this job yet. If you only see yellow MEC text, restart <strong>worker.py</strong> and submit a new match.</p>`;
@@ -776,13 +852,15 @@
                 <div style="padding: 1.5rem;">
                     <div class="workflow-steps" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;font-size:0.8rem;">
                         <span class="status-pill status-ok">1. Review cards</span>
-                        <span class="status-pill">2. Select method or Refer</span>
-                        <span class="status-pill">3. Send client instructions</span>
+                        <span class="status-pill">2. Counsel client</span>
+                        <span class="status-pill">3. Confirm client choice or refer</span>
+                        <span class="status-pill">4. Send instructions</span>
                     </div>
-                    <h3 style="margin-bottom: 0.5rem; color: var(--text);">Method options (LLM + guidelines)</h3>
+                    ${packetHtml}
+                    <h3 style="margin-bottom: 0.5rem; color: var(--text);">Top Recommendations</h3>
                     ${statusHint}
                     <div class="clinical-content" style="color: var(--text); line-height: 1.6;">
-                        ${parseClinicalOutcome(rawRec, data.method_cards || [], data.mec_result || '')}
+                        ${parseClinicalOutcome(rawRec, displayCards || [], data.mec_result || '')}
                     </div>
                     
                     <div style="margin-top: 1.5rem; padding: 1rem; background: #fffaf0; border: 1px solid #feebc8; border-radius: 8px;">
@@ -941,13 +1019,27 @@
                 document.getElementById('drawer-name').textContent = c.name || 'Client';
                 document.getElementById('drawer-phone').textContent = c.phone || phone;
                 const loc = [c.country, c.admin_area].filter(Boolean).join(', ');
+                const packetHtml = window.ProviderRecommendations?.renderPacket(data.recommendation_packet) || '';
+                const careHtml = window.ProviderClients?.renderCarePlan(data.recommendation_packet?.care_plan_status || {}) || '';
+                const timelineHtml = window.ProviderClients?.renderTimeline(data.timeline || []) || '';
+                const referralsHtml = window.ProviderClients?.renderReferrals(data.referrals || []) || '';
+                const auditHtml = window.ProviderClients?.renderAuditTrail(data.audit_trail || []) || '';
+                const displayCards = data.recommendation_packet?.recommended_methods || data.method_cards || [];
                 body.innerHTML = `
                     <p>${UI.statusPill(c.match_status)} <span class="muted">${UI.escapeHtml(c.channel || '')}</span></p>
                     ${loc ? `<p class="muted" style="font-size:0.85rem;">${UI.escapeHtml(loc)}</p>` : ''}
-                    ${c.selected_method ? `<div class="alert alert-success" style="margin:0.75rem 0;">Selected method: <strong>${UI.escapeHtml(c.selected_method)}</strong><br><button class="btn btn-secondary btn-sm" onclick="sendSelectionMessage('${UI.escapeHtml(c.selected_method)}')">Send instructions again</button></div>` : ''}
-                    <h4 style="margin:1rem 0 0.5rem;">Recommendation</h4>
-                    <div class="clinical-content">${parseClinicalOutcome(data.recommendation || '', data.method_cards || [], data.mec_summary || '')}</div>
+                    ${c.selected_method ? `<div class="alert alert-success" style="margin:0.75rem 0;">Client chose: <strong>${UI.escapeHtml(c.selected_method)}</strong><br><button class="btn btn-secondary btn-sm" onclick="sendSelectionMessage('${UI.escapeHtml(c.selected_method)}')">Send instructions again</button></div>` : ''}
+                    ${careHtml}
+                    <h4 style="margin:1rem 0 0.5rem;">Recommendation Packet</h4>
+                    ${packetHtml}
+                    <h4 style="margin:1rem 0 0.5rem;">Top Recommendations</h4>
+                    <div class="clinical-content">${parseClinicalOutcome(data.recommendation || '', displayCards || [], data.mec_summary || '')}</div>
                     <button class="btn btn-secondary btn-sm" style="margin-top:0.75rem;" onclick='openFollowupComposeForClient(${JSON.stringify(c.phone || phone)}, ${JSON.stringify(c.name || "")}, ${JSON.stringify(c.selected_method || "")})'>Compose follow-up</button>
+                    <h4 style="margin:1rem 0 0.5rem;">Referral Tracking</h4>
+                    ${referralsHtml}
+                    <h4 style="margin:1rem 0 0.5rem;">Client Journey Timeline</h4>
+                    ${timelineHtml}
+                    <details style="margin-top:1rem;"><summary class="muted" style="cursor:pointer;">Audit trail</summary>${auditHtml}</details>
                     ${data.mec_summary ? `<h4 style="margin:1rem 0 0.5rem;">MEC summary</h4><pre style="font-size:0.75rem;white-space:pre-wrap;background:#f8fafc;padding:0.75rem;border-radius:8px;">${UI.escapeHtml(data.mec_summary)}</pre>` : ''}
                     <h4 style="margin:1rem 0 0.5rem;">Side effects</h4>
                     ${(data.side_effects && data.side_effects.length) ? data.side_effects.map((s) =>
@@ -995,7 +1087,7 @@
             selectRecommendedMethod(methodName, referralRequired);
         }
 
-        async function selectRecommendedMethod(methodName, referralRequired) {
+        async function selectRecommendedMethod(methodName, referralRequired, extra = {}) {
             const UI = window.DashboardUI;
             const phone = currentClientPhone || triageData.phone;
             if (!phone) return alert('Client phone is missing.');
@@ -1014,6 +1106,9 @@
                 if (!facility) return alert('Referral facility is required for this method.');
                 referral = {
                     facility_name: facility,
+                    referral_destination: facility,
+                    referral_reason: prompt('Referral reason (e.g. insertion, clinician review, complex history):') || 'Requires provider support',
+                    referral_type: 'procedure',
                     appointment_text: prompt('Appointment date/time or instructions (optional):') || '',
                     note: prompt('Referral note for the client (optional):') || '',
                     urgency: 'routine',
@@ -1024,14 +1119,26 @@
                 const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/select_method`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ method: methodName, counseling, referral }),
+                    body: JSON.stringify({ method: methodName, counseling, referral, ...extra }),
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Selection failed');
-                alert(`${methodName} selected. Follow-up tasks were created.`);
+                alert(`${methodName} confirmed as the client's choice. Follow-up tasks were created.`);
                 await sendSelectionMessage(methodName, referral);
                 loadRoster();
             } catch (e) {
+                if (e.message.includes('Clinical Override Required')) {
+                    const overrideReason = prompt('Clinical Override Required: why is the client choosing a method outside the recommendation list?');
+                    if (!overrideReason) return;
+                    return selectRecommendedMethod(methodName, referralRequired, { ...extra, override_reason: overrideReason });
+                }
+                if (e.message.includes('High-Risk Clinical Decision')) {
+                    const safetyReason = prompt('High-Risk Clinical Decision: document the safety justification.');
+                    if (!safetyReason) return;
+                    const ack = confirm('Clinician acknowledgment: confirm that a clinician has reviewed this high-risk decision.');
+                    if (!ack) return;
+                    return selectRecommendedMethod(methodName, referralRequired, { ...extra, safety_override_reason: safetyReason, clinician_acknowledgment: true });
+                }
                 alert(e.message);
             }
         }
@@ -1050,6 +1157,9 @@
                     body: JSON.stringify({
                         method: methodName,
                         facility_name: facility,
+                        referral_destination: facility,
+                        referral_reason: prompt('Referral reason:', note || 'Requires provider support') || 'Requires provider support',
+                        referral_type: 'procedure',
                         appointment_text: appointmentText,
                         note,
                         urgency: 'routine',
@@ -1135,6 +1245,18 @@
             }
         }
 
+        async function runFollowupAutomation() {
+            try {
+                const res = await fetch('/api/provider/followups/run_automation', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Automation failed');
+                alert(`Automation complete. Sent: ${data.sent || 0}, escalated: ${data.escalated || 0}, skipped: ${data.skipped || 0}.`);
+                loadFollowups();
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
         async function loadFollowups() {
             const listEl = document.getElementById('followups-client-list');
             const tableEl = document.getElementById('followups-table');
@@ -1145,40 +1267,8 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed');
                 const tasks = data.followups || [];
-                const byPhone = {};
-                tasks.forEach((t) => {
-                    const phone = t.phone || '';
-                    if (!byPhone[phone]) {
-                        byPhone[phone] = {
-                            phone,
-                            name: t.client_name || phone,
-                            method: t.method || '',
-                            pending: 0,
-                            tasks: [],
-                        };
-                    }
-                    byPhone[phone].tasks.push(t);
-                    if ((t.status || 'pending') === 'pending') byPhone[phone].pending += 1;
-                });
-                const groups = Object.values(byPhone).sort((a, b) => b.pending - a.pending);
-                if (!groups.length) {
-                    listEl.innerHTML = '<p class="empty-state">No follow-up clients yet. Follow-ups appear after you select a method for a client.</p>';
-                } else {
-                    listEl.innerHTML = groups.map((g) => `
-                        <div class="followup-client-row" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0.75rem 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
-                            <div>
-                                <strong>${UI.escapeHtml(g.name)}</strong>
-                                <div class="muted mono" style="font-size:0.8rem;">${UI.escapeHtml(g.phone)}</div>
-                                <div class="muted" style="font-size:0.8rem;">${UI.escapeHtml(g.method || '—')} · ${g.pending} pending reminder(s)</div>
-                            </div>
-                            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-                                <button class="btn btn-primary btn-sm" onclick='sendComposedFollowup(${JSON.stringify(g.phone)}, ${JSON.stringify(g.name)}, ${JSON.stringify(g.method)})'>Send follow-up</button>
-                                <button class="btn btn-secondary btn-sm" onclick='openFollowupComposeForClient(${JSON.stringify(g.phone)}, ${JSON.stringify(g.name)}, ${JSON.stringify(g.method)})'>Edit message</button>
-                                <button class="btn btn-secondary btn-sm" onclick='openClientDrawer(${JSON.stringify(g.phone)})'>Open client</button>
-                            </div>
-                        </div>
-                    `).join('');
-                }
+                const groups = window.ProviderFollowups?.groupByClient(tasks) || [];
+                listEl.innerHTML = window.ProviderFollowups?.renderClientRows(groups) || '<p class="empty-state">No follow-up clients yet.</p>';
                 UI.renderSimpleTable(tableEl, [
                     { key: 'client_name', label: 'Client' },
                     { key: 'phone', label: 'Phone' },
@@ -1194,20 +1284,69 @@
         }
 
         async function recordFollowupOutcome(taskId) {
-            const outcome = prompt('Outcome: continuing, side_effect_reassured, referred, switched, stopped, unreachable');
+            const outcome = prompt('Outcome type: continuing, switched, stopped, pregnancy_reported, referred, lost_to_followup');
             if (!outcome) return;
-            const note = prompt('Short note (optional):') || '';
+            const selectedMethod = prompt('Selected/current method (optional):') || '';
+            const switchedTo = outcome === 'switched' ? (prompt('Switched to which method?') || '') : '';
+            const sideEffects = prompt('Side effects reported (comma separated, optional):') || '';
+            const pregnancyStatus = prompt('Pregnancy status: not_pregnant, possible, confirmed, unknown', 'unknown') || 'unknown';
+            const continuationStatus = prompt('Continuation status: continuing, switched, stopped, referred, lost_to_followup', outcome === 'continuing' ? 'continuing' : outcome) || outcome;
+            const note = prompt('Short clinical note (optional):') || '';
+            const structured_outcome = {
+                outcome_type: outcome,
+                selected_method: selectedMethod,
+                switched_to_method: switchedTo,
+                side_effects: sideEffects.split(',').map((s) => s.trim()).filter(Boolean),
+                pregnancy_status: pregnancyStatus,
+                continuation_status: continuationStatus,
+                notes: note,
+            };
             try {
                 const res = await fetch(`/api/provider/followups/${encodeURIComponent(taskId)}/outcome`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ outcome, note }),
+                    body: JSON.stringify({ outcome, note, structured_outcome }),
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Could not record outcome');
                 loadFollowups();
             } catch (e) {
                 alert(e.message);
+            }
+        }
+
+        async function updateReferralStatus(referralId, status) {
+            const phone = currentClientPhone;
+            if (!phone || !referralId) return alert('Open a client first.');
+            const note = prompt(`Note for marking referral ${status} (optional):`) || '';
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/referrals/${encodeURIComponent(referralId)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status, note }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not update referral');
+                alert(`Referral marked ${status}.`);
+                openClientDrawer(phone);
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        async function loadClinicalReview() {
+            const phone = (document.getElementById('clinical-review-phone')?.value || '').trim();
+            const target = document.getElementById('clinical-review-result');
+            const UI = window.DashboardUI;
+            if (!phone) return alert('Enter a client phone number.');
+            UI.showLoading(target, 'Loading clinical review…');
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/clinical_review`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not load clinical review');
+                target.innerHTML = window.ProviderClients?.renderClinicalReview(data) || '<p class="muted">No review data.</p>';
+            } catch (e) {
+                UI.showError(target, e.message);
             }
         }
 

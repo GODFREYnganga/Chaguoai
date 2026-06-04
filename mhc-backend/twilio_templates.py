@@ -5,7 +5,7 @@ Twilio requires separate approved templates for each button/list row count.
 A 3-button quick-reply template FAILS when you only send 2 options — which is
 why Q3/Q8/Q9/Q12 (Yes/No) had no buttons while Q5 (3 options) worked.
 
-Configure one SID per size in .env (see mhc-docs/twilio_content_templates.md).
+Configure one SID per size in .env (see docs/twilio_content_templates.md).
 """
 
 from __future__ import annotations

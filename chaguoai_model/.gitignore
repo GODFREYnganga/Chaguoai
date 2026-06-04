@@ -1,0 +1,9 @@
+*.pyc
+*.pkl
+.env
+data/raw/
+outputs/processed/
+outputs/models/
+outputs/figures/
+*.parquet
+*.sqlite3

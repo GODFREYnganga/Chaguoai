@@ -1,0 +1,12 @@
+,value
+total_clean_records,78414
+discontinued_count,32458
+continued_count,45956
+positive_rate_pct,41.4
+overall_disc_rate_pct,41.4
+highest_disc_method,Condom
+lowest_disc_method,Pills
+strongest_predictor,fertility_ordinal
+unique_clients,2863
+date_range,2013-2015
+counties,"Busia, Siaya"

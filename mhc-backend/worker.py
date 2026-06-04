@@ -4,6 +4,7 @@ from rq import SimpleWorker, Worker
 
 import method_match_tasks  # noqa: F401
 import triage_tasks  # noqa: F401
+import followup_tasks  # noqa: F401
 from task_queue import TRIAGE_QUEUE_NAME, get_redis_connection
 
 

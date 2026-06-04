@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import datetime
 import io
+import os
 from collections import Counter, defaultdict
 from typing import Any, Optional
 
@@ -17,6 +18,10 @@ except ModuleNotFoundError:  # Allows pure unit tests outside the Firebase venv.
 
 from geography import aggregate_geography_stats
 from method_categories import classify_method_category_primary
+
+
+ADMIN_STATS_LIMIT = int(os.environ.get("ADMIN_STATS_LIMIT", "5000"))
+ADMIN_PROVIDER_LIMIT = int(os.environ.get("ADMIN_PROVIDER_LIMIT", "1000"))
 
 
 def parse_timestamp(value: Any) -> Optional[datetime.datetime]:
@@ -198,7 +203,7 @@ def collect_safety_items(db, *, provider_id: Optional[str] = None, limit: int = 
             return []
         for doc in db.collection("contraceptive_users").where(
             filter=firestore.FieldFilter("assigned_provider_id", "==", provider_id)
-        ).stream():
+        ).limit(ADMIN_STATS_LIMIT).stream():
             assigned_phones.add(doc.id)
 
     items: list[dict] = []
@@ -218,10 +223,18 @@ def collect_safety_items(db, *, provider_id: Optional[str] = None, limit: int = 
                 "at": format_timestamp(payload.get("timestamp")),
                 "id": doc.id,
             })
-    except Exception:
-        pass
+    except (AttributeError, RuntimeError, ValueError) as exc:
+        items.append({
+            "type": "safety_query_error",
+            "phone": "",
+            "report": f"Could not query side-effect reports: {exc}",
+            "source": "system",
+            "language": "",
+            "at": "",
+            "id": "side_effect_query_error",
+        })
 
-    for doc in db.collection("contraceptive_users").stream():
+    for doc in db.collection("contraceptive_users").limit(ADMIN_STATS_LIMIT).stream():
         data = doc.to_dict() or {}
         phone = doc.id
         if assigned_phones is not None and phone not in assigned_phones:
@@ -294,13 +307,16 @@ def build_admin_stats(
         from health_check import run_health_checks
         health = run_health_checks()
     users_raw = []
-    for doc in db.collection("contraceptive_users").stream():
+    for doc in db.collection("contraceptive_users").limit(ADMIN_STATS_LIMIT).stream():
         data = doc.to_dict() or {}
         data["phone"] = doc.id
         data["id"] = doc.id
         users_raw.append(data)
 
-    providers = [doc.to_dict() | {"id": doc.id} for doc in db.collection("providers").stream()]
+    providers = [
+        doc.to_dict() | {"id": doc.id}
+        for doc in db.collection("providers").limit(ADMIN_PROVIDER_LIMIT).stream()
+    ]
     users = filter_cohort(users_raw, cohort)
 
     return {

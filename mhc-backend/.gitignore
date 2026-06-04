@@ -19,6 +19,11 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Runtime/generated stores
+knowledge_base/chroma_db/
+*.sqlite3
+*.db
+
 # Editor / IDEs
 .vscode/
 .idea/
