@@ -30,6 +30,7 @@ class TestRouteBlueprints(unittest.TestCase):
             "provider_dashboard",
             "provider_login",
             "provider_register",
+            "provider_register_confirmation",
             "api_provider_register",
             "api_provider_login",
             "api_provider_logout",

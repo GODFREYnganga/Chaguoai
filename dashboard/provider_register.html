@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apply as Provider — ChaguoAI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="auth-page auth-page--register">
+
+    <div class="auth-wrapper">
+        <div class="card register-card">
+                <div class="brand-header brand-header--left">
+                    <div class="brand-mark" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1>Provider application</h1>
+                        <p>Complete the form below. Fields marked <span class="required-mark">*</span> are required. Your account will be activated after administrator approval.</p>
+                    </div>
+                </div>
+
+                <div id="alert-box" class="alert" style="display: none;" role="alert"></div>
+
+                <form id="provider-register-form" novalidate>
+                    <fieldset class="form-section">
+                        <legend>Personal details</legend>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="fullName">Full name <span class="required-mark">*</span></label>
+                                <input type="text" id="fullName" name="fullName" required autocomplete="name" placeholder="e.g. Jane Wanjiku">
+                            </div>
+                            <div class="form-group">
+                                <label for="phone">Phone number <span class="required-mark">*</span></label>
+                                <input type="tel" id="phone" name="phone" required autocomplete="tel" placeholder="+254712345678">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Work email <span class="required-mark">*</span></label>
+                            <input type="email" id="email" name="email" required autocomplete="email" placeholder="you@facility.org">
+                            <p class="field-hint">Used for login after your application is approved.</p>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="form-section">
+                        <legend>Professional profile</legend>
+                        <p class="field-hint section-hint">Select the role that best describes your work.</p>
+                        <div class="role-picker" role="radiogroup" aria-label="Provider role">
+                            <label class="role-card">
+                                <input type="radio" name="role" value="chw" required>
+                                <span class="role-card-body">
+                                    <span class="role-card-title">Community Health Worker</span>
+                                    <span class="role-card-desc">Field counselling, client follow-up, and roster management.</span>
+                                </span>
+                            </label>
+                            <label class="role-card">
+                                <input type="radio" name="role" value="clinician">
+                                <span class="role-card-body">
+                                    <span class="role-card-title">Clinician</span>
+                                    <span class="role-card-desc">Doctor or nurse — clinical review, overrides, and referrals.</span>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label for="credentials">Credentials / licence ID <span class="required-mark">*</span></label>
+                            <input type="text" id="credentials" name="credentials" required placeholder="e.g. KMPDC-12345 or CHW ID">
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="form-section">
+                        <legend>Account security</legend>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="password">Password <span class="required-mark">*</span></label>
+                                <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password" placeholder="Minimum 8 characters">
+                            </div>
+                            <div class="form-group">
+                                <label for="passwordConfirm">Confirm password <span class="required-mark">*</span></label>
+                                <input type="password" id="passwordConfirm" name="passwordConfirm" required minlength="8" autocomplete="new-password" placeholder="Re-enter password">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <div class="register-consent">
+                        <p>By submitting, you confirm that your details are accurate and you are authorised to provide reproductive health services within your organisation.</p>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block" id="submit-btn">Submit application</button>
+                </form>
+
+                <p class="auth-footer-text">
+                    Already approved? <a href="/provider/login">Sign in to the provider portal</a>
+                </p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('provider-register-form');
+        const alertBox = document.getElementById('alert-box');
+        const submitBtn = document.getElementById('submit-btn');
+
+        function showAlert(message, type) {
+            alertBox.className = 'alert alert-' + type;
+            alertBox.textContent = message;
+            alertBox.style.display = 'block';
+            alertBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function selectedRole() {
+            const checked = form.querySelector('input[name="role"]:checked');
+            return checked ? checked.value : '';
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            alertBox.style.display = 'none';
+
+            const password = document.getElementById('password').value;
+            const passwordConfirm = document.getElementById('passwordConfirm').value;
+            const role = selectedRole();
+
+            if (!role) {
+                showAlert('Please select your role (CHW or Clinician).', 'error');
+                return;
+            }
+            if (password.length < 8) {
+                showAlert('Password must be at least 8 characters.', 'error');
+                return;
+            }
+            if (password !== passwordConfirm) {
+                showAlert('Passwords do not match. Please check and try again.', 'error');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting…';
+
+            const payload = {
+                fullName: document.getElementById('fullName').value.trim(),
+                email: document.getElementById('email').value.trim(),
+                phone: document.getElementById('phone').value.trim(),
+                role,
+                credentials: document.getElementById('credentials').value.trim(),
+                password,
+            };
+
+            try {
+                const res = await fetch('/api/provider/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    const email = encodeURIComponent(payload.email);
+                    window.location.href = data.redirect
+                        ? data.redirect + '?email=' + email
+                        : '/provider/register/confirmation?email=' + email;
+                    return;
+                }
+                throw new Error(data.error || 'Registration failed');
+            } catch (err) {
+                showAlert(err.message || 'Could not submit application. Please try again.', 'error');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit application';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login — ChaguoAI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="auth-page">
+    <div class="auth-wrapper">
+        <div class="card">
+            <div class="brand-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <h1>Admin command center</h1>
+                <p>Enter your secure access code to manage providers and analytics.</p>
+            </div>
+
+            <div id="alert-box" class="alert" style="display: none;" role="alert"></div>
+
+            <form id="admin-login-form">
+                <div class="form-group">
+                    <label for="access_code">Secure access code: ADMIN2026</label>
+                    <input type="password" id="access_code" name="access_code" placeholder="Enter admin access code" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Unlock dashboard</button>
+            </form>
+
+            <p class="auth-footer-text">
+                Need to approve a provider? You will land on <strong>Provider approvals</strong> after login.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('admin-login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code = document.getElementById('access_code').value;
+            const alertBox = document.getElementById('alert-box');
+            alertBox.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ access_code: code }),
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    const next = new URLSearchParams(window.location.search).get('next');
+                    if (next && next.startsWith('/admin')) {
+                        window.location.href = next;
+                    } else {
+                        window.location.href = '/admin/portal?section=approvals';
+                    }
+                } else {
+                    alertBox.textContent = data.error || 'Access denied';
+                    alertBox.className = 'alert alert-error';
+                    alertBox.style.display = 'block';
+                }
+            } catch (err) {
+                alertBox.textContent = 'System connection failed. Please try again.';
+                alertBox.className = 'alert alert-error';
+                alertBox.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

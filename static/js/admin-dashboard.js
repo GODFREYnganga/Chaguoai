@@ -5,6 +5,11 @@
   const UI = window.DashboardUI;
   let currentCohort = 'all';
 
+  const SECTION_META = {
+    dashboard: { title: 'Analytics overview', metaFromStats: true },
+    approvals: { title: 'Provider approvals', meta: 'Review and approve pending applications' },
+  };
+
   function showSection(sectionId, navEl) {
     document.querySelectorAll('.content-section').forEach((el) => {
       el.style.display = 'none';
@@ -13,6 +18,19 @@
     const target = document.getElementById(sectionId);
     if (target) target.style.display = 'block';
     if (navEl) navEl.classList.add('active');
+    else {
+      const link = document.querySelector(`.nav-item[onclick*="'${sectionId}'"]`);
+      if (link) link.classList.add('active');
+    }
+
+    const titleEl = document.getElementById('topbar-title');
+    const meta = SECTION_META[sectionId];
+    if (titleEl && meta) titleEl.textContent = meta.title;
+    const gen = document.getElementById('generated-at');
+    if (gen && meta && meta.meta && sectionId === 'approvals') {
+      gen.textContent = meta.meta;
+    }
+
     if (sectionId === 'approvals') loadApprovals();
     if (sectionId === 'dashboard') loadStats();
   }
@@ -256,8 +274,18 @@
     window.currentAdminEventSource = source;
   }
 
+  function resolveInitialSection() {
+    const params = new URLSearchParams(window.location.search);
+    const section = params.get('section');
+    if (section === 'approvals') {
+      showSection('approvals');
+      return;
+    }
+    showSection('dashboard');
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
-    loadStats();
+    resolveInitialSection();
     connectRealtime();
   });
 })();

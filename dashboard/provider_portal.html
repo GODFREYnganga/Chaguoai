@@ -1,0 +1,1366 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Provider Portal - ChaguoAI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <style>
+        .lang-badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+        }
+
+        .lang-badge.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Method Card Styles */
+        .method-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-header {
+            padding: 1rem;
+            background: #f8fafc;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h4 {
+            margin: 0;
+            color: var(--primary);
+            font-size: 1.1rem;
+        }
+
+        .card-body {
+            padding: 1rem;
+        }
+
+        .card-summary {
+            font-size: 0.95rem;
+            color: var(--text);
+            line-height: 1.5;
+            margin-bottom: 0.5rem;
+        }
+
+        .card-details {
+            display: none;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-top: 0.8rem;
+            white-space: pre-wrap;
+            border: 1px solid #e2e8f0;
+            line-height: 1.6;
+        }
+
+        .learn-more {
+            color: var(--primary);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-decoration: underline;
+            display: inline-block;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="dash-layout">
+        <aside class="dash-sidebar">
+            <div class="sidebar-header">
+                <h2 id="user-name">Loading...</h2>
+                <p id="user-role" style="font-size: 0.75rem; margin:0; text-transform: uppercase;">...</p>
+            </div>
+            <nav class="sidebar-nav" id="sidebar-nav">
+                <!-- Dynamic elements -->
+            </nav>
+        </aside>
+
+        <main class="dash-main">
+            <div class="topbar">
+                <h2 id="view-title">Dashboard</h2>
+                <button class="btn btn-secondary" onclick="logout()">Log Out</button>
+            </div>
+
+            <!-- Role: CHW - Client Roster -->
+            <section id="view-chw-roster" class="content-section" style="display: none;">
+                
+                <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="showSection('chw-triage')">New Method Match</button>
+                    <button class="btn btn-secondary" onclick="showSection('chw-qa')">Ask Clinical Question</button>
+                </div>
+                <div class="roster-toolbar">
+                    <input type="search" id="roster-search" class="input" placeholder="Search name or phone…" oninput="filterRoster()">
+                    <select id="roster-filter-status" class="input filter-select" onchange="filterRoster()">
+                        <option value="">All statuses</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                        <option value="processing">Processing</option>
+                        <option value="in_progress">In progress</option>
+                    </select>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="loadRoster()">Refresh</button>
+                </div>
+                <div class="panel" style="padding:0;">
+                    <div id="roster-table-wrap" class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Client</th>
+                                    <th>Phone</th>
+                                    <th>Registered</th>
+                                    <th>Method</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="chw-roster-table">
+                                <tr><td colspan="5" class="text-center">Loading roster…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-chw-side-effects" class="content-section" style="display: none;">
+                <div class="panel">
+                    <h3 class="panel-title">Side effect reports</h3>
+                    <p class="panel-subtitle">From your assigned clients — review and follow up in person when needed.</p>
+                    <div id="side-effects-table"></div>
+                </div>
+            </section>
+
+            <section id="view-chw-followups" class="content-section" style="display: none;">
+                <div class="panel" style="margin-bottom:1rem;">
+                    <h3 class="panel-title">Compose one follow-up message</h3>
+                    <p class="panel-subtitle">Write once, then send to each client with the button on their row. Tasks below are reminders only — you do not need a separate message per task line.</p>
+                    <div class="form-group">
+                        <label for="followup-template" class="muted" style="font-size:0.85rem;">Template</label>
+                        <select id="followup-template" class="input" onchange="applyFollowupTemplate()">
+                            <option value="">Choose a template…</option>
+                            <option value="checkin">Routine check-in</option>
+                            <option value="side_effects">Ask about side effects</option>
+                            <option value="missed">Missed dose / visit reminder</option>
+                        </select>
+                    </div>
+                    <textarea id="followup-compose-text" class="input" rows="5" placeholder="Habari [name], this is your ChaguoAI follow-up…"></textarea>
+                </div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3 class="panel-title">Clients needing follow-up</h3>
+                            <p class="panel-subtitle">Grouped by client — use Send follow-up next to each name.</p>
+                        </div>
+                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                            <button class="btn btn-secondary btn-sm" onclick="runFollowupAutomation()">Run automation</button>
+                            <button class="btn btn-secondary btn-sm" onclick="loadFollowups()">Refresh</button>
+                        </div>
+                    </div>
+                    <div id="followups-client-list"></div>
+                    <details style="margin-top:1rem;">
+                        <summary class="muted" style="cursor:pointer;font-size:0.85rem;">Show all scheduled task lines (advanced)</summary>
+                        <div id="followups-table" style="margin-top:0.75rem;"></div>
+                    </details>
+                </div>
+            </section>
+
+            <!-- Role: CHW - General Q&A -->
+            <section id="view-chw-qa" class="content-section" style="display: none;">
+                <div class="card" style="max-width: 800px; margin: 0 auto;">
+                    <h3>General Clinical Q&A</h3>
+                    <p>Ask any general question about contraceptives. Answers are grounded in national guidelines.</p>
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <textarea id="chw-qa-input" rows="4"
+                            placeholder="e.g. Can a nursing mother use implants?"></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="askCHWQuestion()" id="btn-qa">Ask AI Assistant</button>
+                    <div id="chw-qa-result"
+                        style="margin-top: 2rem; display: none; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: #f8fafc;">
+                        <!-- Injected -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Role: CHW - Assisted Triage -->
+            <section id="view-chw-triage" class="content-section" style="display: none;">
+                <div class="card" style="max-width: 800px; margin: 0 auto;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <h3>Clinical Triage Wizard</h3>
+                        <div style="display: flex; gap: 0.3rem;" id="lang-selector">
+                            <span class="lang-badge active" onclick="setLang('en')">EN</span>
+                            <span class="lang-badge" onclick="setLang('sw')">SW</span>
+                            <span class="lang-badge" onclick="setLang('fr')">FR</span>
+                            <span class="lang-badge" onclick="setLang('pt')">PT</span>
+                        </div>
+                    </div>
+
+                    <div id="triage-form-container">
+                        <div
+                            style="background: #f1f5f9; padding: 1.5rem; border-radius: var(--radius); margin-bottom: 1rem; position: relative;">
+                            <button class="btn btn-secondary"
+                                style="position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.7rem; padding: 0.2rem 0.5rem;"
+                                onclick="speakQuestion()">🔊 Speak</button>
+                            <span id="triage-step-display"
+                                style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.5rem;">Step
+                                1 of 13</span>
+                            <h4 id="triage-prompt" style="margin: 0; line-height: 1.4;">...</h4>
+                        </div>
+
+                        <div id="triage-input-container" class="form-group">
+                            <!-- Injected -->
+                        </div>
+
+                        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                            <button id="btn-back" class="btn btn-secondary" style="flex: 1; display: none;"
+                                onclick="prevTriageStep()">Back</button>
+                            <button id="btn-next" class="btn btn-primary" style="flex: 2;"
+                                onclick="nextTriageStep()">Next Question</button>
+                        </div>
+                    </div>
+
+                    <div id="triage-result-container" style="display: none;">
+                        <div id="triage-final-result">
+                            <!-- Injected -->
+                        </div>
+                        <button class="btn btn-primary btn-block" style="margin-top: 1.5rem;"
+                            onclick="showSection('chw-roster')">Close & Back to Roster</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Role: Clinician - MEC Engine -->
+            <section id="view-clinician-mec" class="content-section" style="display: none;">
+                <!-- Existing MEC logic -->
+                <div class="card" style="max-width: 800px; margin: 0 auto;">
+                    <h3>Medical Eligibility (MEC) Deep Query</h3>
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <textarea id="mec-query" rows="4" placeholder="Full patient case details..."></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="queryMEC()" id="btn-mec">Analyze Guidelines</button>
+                    <div id="mec-result"
+                        style="margin-top: 2rem; display: none; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: #f8fafc;">
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-clinician-review" class="content-section" style="display: none;">
+                <div class="card" style="max-width: 1000px; margin: 0 auto;">
+                    <h3>Clinician Review Panel</h3>
+                    <p class="muted">Review MEC rationale, confidence reasoning, excluded methods, overrides, referrals, and audit history.</p>
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:1rem 0;">
+                        <input id="clinical-review-phone" class="input" style="flex:1;min-width:260px;" placeholder="Client phone e.g. +254…, +256…, +234…" />
+                        <button class="btn btn-primary" onclick="loadClinicalReview()">Open Review</button>
+                    </div>
+                    <div id="clinical-review-result"></div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <div id="drawer-overlay" class="drawer-overlay" onclick="closeClientDrawer()"></div>
+    <aside id="client-drawer" class="client-drawer" aria-hidden="true">
+        <div class="drawer-header">
+            <div>
+                <h3 id="drawer-name" style="margin:0;">Client</h3>
+                <p id="drawer-phone" class="muted" style="margin:0.25rem 0 0;font-size:0.85rem;"></p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="closeClientDrawer()">Close</button>
+        </div>
+        <div class="drawer-body" id="drawer-body">
+            <div class="loading-state"><span class="spinner"></span>Loading…</div>
+        </div>
+    </aside>
+
+    <script src="/static/js/dashboard-ui.js"></script>
+    <script src="/static/js/provider-recommendations.js"></script>
+    <script src="/static/js/provider-clients.js"></script>
+    <script src="/static/js/provider-followups.js"></script>
+    <script>
+        let currentProvider = null;
+        let selectedLang = 'en';
+        let triageStep = 0;
+        let triageData = {};
+        let currentClientPhone = '';
+        let currentRecommendationCards = [];
+
+        // Canonical countries from API (fallback if offline)
+        let africanCountries = [];
+        let adminAreaLabels = {};
+
+        function adminAreaLabel(country) {
+            return adminAreaLabels[country] || 'county/state/district';
+        }
+
+        async function loadGeographyCatalog() {
+            try {
+                const res = await fetch('/api/geography/countries');
+                if (!res.ok) throw new Error('catalog unavailable');
+                const data = await res.json();
+                africanCountries = (data.countries || []).map(c => c.name);
+                adminAreaLabels = {};
+                (data.countries || []).forEach(c => {
+                    adminAreaLabels[c.name] = c.admin_area_label;
+                });
+            } catch (e) {
+                console.warn('Using embedded country fallback', e);
+                africanCountries = [
+                    'Kenya', 'Uganda', 'Tanzania', 'Nigeria', 'South Africa', 'Ghana', 'Ethiopia', 'Rwanda'
+                ];
+                adminAreaLabels = { Kenya: 'county', Uganda: 'district', Tanzania: 'region', Nigeria: 'state' };
+            }
+            const countryQ = triageQuestions.find(q => q.id === 'country');
+            if (countryQ) {
+                countryQ.options = {
+                    en: africanCountries, sw: africanCountries, fr: africanCountries, pt: africanCountries
+                };
+            }
+        }
+
+        const triageQuestions = [
+            { id: 'phone', en: 'Client Phone Number (e.g. +254…, +256…, +234…):', sw: 'Namba ya Simu ya Mteja (mfn +254…, +256…, +234…):', fr: 'Numéro de téléphone du client (ex. +254…, +256…, +234…):', pt: 'Número de telefone do cliente (ex. +254…, +256…, +234…):', type: 'text' },
+            { id: 'name', en: 'Client Full Name:', sw: 'Jina Kamili la Mteja:', fr: 'Nom complet du client:', pt: 'Nome completo do cliente:', type: 'text' },
+            {
+                id: 'country',
+                en: 'Analytics only: client country:',
+                sw: 'Kwa takwimu tu: nchi ya mteja:',
+                fr: 'Statistiques uniquement : pays du client :',
+                pt: 'Apenas para analise: pais do cliente:',
+                type: 'select',
+                options: { en: [], sw: [], fr: [], pt: [] }
+            },
+            { id: 'admin_area', en: 'Analytics only: client administrative area:', sw: 'Kwa takwimu tu: eneo la utawala:', fr: 'Statistiques uniquement : zone administrative :', pt: 'Apenas para analise: area administrativa:', type: 'text' },
+            { id: 'age', en: 'Client Age:', sw: 'Umri wa Mteja:', fr: 'Âge du client:', pt: 'Idade do cliente:', type: 'number' },
+            { id: 'last_period', en: 'Date of Last Menstrual Period (LMP):', sw: 'Tarehe ya Hedhi ya Mwisho:', fr: 'Date des dernières règles:', pt: 'Data da última menstruação:', type: 'date' },
+            {
+                id: 'nursing', en: 'Are they currently nursing (breastfeeding)?', sw: 'Je, wananyonyesha sasa?', fr: 'Allaitent-ils actuellement?', pt: 'Estão a amamentar atualmente?', type: 'select',
+                options: {
+                    en: ['No', 'Yes (Less than 6 weeks)', 'Yes (More than 6 weeks)'],
+                    sw: ['Hapana', 'Ndiyo (Chini ya wiki 6)', 'Ndiyo (Zaidi ya wiki 6)'],
+                    fr: ['Non', 'Oui (Moins de 6 semaines)', 'Oui (Plus de 6 semaines)'],
+                    pt: ['Não', 'Sim (Menos de 6 semanas)', 'Sim (Mais de 6 semanas)']
+                }
+            },
+            {
+                id: 'parity', en: 'Total number of children:', sw: 'Idadi ya watoto:', fr: 'Nombre total d\'enfants:', pt: 'Número total de filhos:', type: 'select',
+                options: {
+                    en: ['0', '1', '2', '3', '4', '5+'],
+                    sw: ['0', '1', '2', '3', '4', '5+'],
+                    fr: ['0', '1', '2', '3', '4', '5+'],
+                    pt: ['0', '1', '2', '3', '4', '5+']
+                }
+            },
+            {
+                id: 'future_children', en: 'Do they wish to have more children?', sw: 'Je, wanatamani kupata watoto zaidi?', fr: 'Souhaitent-ils avoir plus d\'enfants?', pt: 'Desejam ter mais filhos?', type: 'select',
+                options: {
+                    en: ['Yes, soon', 'Yes, later', 'No more'],
+                    sw: ['Ndiyo, hivi karibuni', 'Ndiyo, baadaye', 'Hapana tena'],
+                    fr: ['Oui, bientôt', 'Oui, plus tard', 'Plus d\'enfants'],
+                    pt: ['Sim, em breve', 'Sim, mais tarde', 'Não mais']
+                }
+            },
+            {
+                id: 'smoking', en: 'Do they smoke (cigarettes)?', sw: 'Je, wanavuta sigara?', fr: 'Fument-ils?', pt: 'Fumam?', type: 'select',
+                options: {
+                    en: ['No', 'Yes (Less than 15/day)', 'Yes (15 or more/day)'],
+                    sw: ['Hapana', 'Ndiyo (Chini ya 15/siku)', 'Ndiyo (15 au zaidi/siku)'],
+                    fr: ['Non', 'Oui (Moins de 15/jour)', 'Oui (15 ou plus/jour)'],
+                    pt: ['Não', 'Sim (Menos de 15/dia)', 'Sim (15 ou mais/dia)']
+                }
+            },
+            {
+                id: 'blood_pressure', en: 'Is their blood pressure high?', sw: 'Shinikizo lao la damu ni la juu?', fr: 'Leur tension artérielle est-elle élevée?', pt: 'A pressão arterial deles está alta?', type: 'select',
+                options: {
+                    en: ['Normal (<140/90)', 'High (140-159/90-99)', 'Very High (>160/100)'],
+                    sw: ['Kawaida (<140/90)', 'Juu (140-159/90-99)', 'Juu Sana (>160/100)'],
+                    fr: ['Normale (<140/90)', 'Élevée (140-159/90-99)', 'Très élevée (>160/100)'],
+                    pt: ['Normal (<140/90)', 'Alta (140-159/90-99)', 'Muito Alta (>160/100)']
+                }
+            },
+            { id: 'health_history', en: 'Any history of Migraines, Liver, or Heart issues?', sw: 'Maumivu ya kichwa, Ini, au Moyo?', fr: 'Antécédents de migraines, foie ou cœur?', pt: 'Histórico de enxaquecas, fígado ou coração?', type: 'text' },
+            {
+                id: 'hiv_status', en: 'HIV status (if they wish to share):', sw: 'Hali ya UKIMWI:', fr: 'Statut VIH:', pt: 'Estado de VIH:', type: 'select',
+                options: {
+                    en: ['Negative', 'Positive (on ART)', 'Positive (not on ART)', 'Unknown'],
+                    sw: ['Hasi (Negative)', 'Chanya (anatumia dawa)', 'Chanya (hatumii dawa)', 'Haijulikani'],
+                    fr: ['Négatif', 'Positif (sous ARV)', 'Positif (pas sous ARV)', 'Inconnu'],
+                    pt: ['Negativo', 'Positivo (em ART)', 'Positivo (não em ART)', 'Desconhecido']
+                }
+            },
+            {
+                id: 'sti_risk', en: 'Concerns about STIs / dual protection?', sw: 'Wasiwasi wa magonjwa ya zinaa?', fr: 'Risque d\'IST / double protection?', pt: 'Riscos de IST / proteção dupla?', type: 'select',
+                options: {
+                    en: ['Low Risk', 'High Risk / Need Protection'],
+                    sw: ['Hatari ya chini', 'Hatari kubwa / Kinga inahitajika'],
+                    fr: ['Risque faible', 'Risque élevé / Protection nécessaire'],
+                    pt: ['Baixo risco', 'Alto risco / Proteção necessária']
+                }
+            },
+            { id: 'preference', en: 'Specific method interest or avoidance?', sw: 'Njia wanayopenda au kuepuka?', fr: 'Méthode spécifiquement recherchée ou évitée?', pt: 'Método específico pretendido ou a evitar?', type: 'text' }
+        ];
+
+        async function init() {
+            try {
+                await loadGeographyCatalog();
+                const res = await fetch('/api/provider/me');
+                if (!res.ok) throw new Error('Unauthorized');
+                currentProvider = await res.json();
+                document.getElementById('user-name').textContent = currentProvider.fullName;
+                document.getElementById('user-role').textContent = currentProvider.role.toUpperCase();
+                setupSidebar();
+                showSection(currentProvider.role === 'chw' ? 'chw-roster' : 'clinician-mec');
+                loadRoster();
+            } catch (e) { window.location.href = '/provider/login'; }
+        }
+
+        function setupSidebar() {
+            const nav = document.getElementById('sidebar-nav');
+            if (currentProvider.role === 'chw') {
+                nav.innerHTML = `
+                    <a href="#" class="nav-item active" onclick="showSection('chw-roster')">My Clients</a>
+                    <a href="#" class="nav-item" onclick="showSection('chw-triage')">Method Match</a>
+                    <a href="#" class="nav-item" onclick="showSection('chw-followups')">Follow-ups</a>
+                    <a href="#" class="nav-item" onclick="showSection('chw-side-effects')">Side Effects</a>
+                    <a href="#" class="nav-item" onclick="showSection('chw-qa')">General Q&A</a>
+                `;
+            } else {
+                nav.innerHTML = `
+                    <a href="#" class="nav-item active" onclick="showSection('clinician-mec')">MEC Analyzer</a>
+                    <a href="#" class="nav-item" onclick="showSection('clinician-review')">Clinician Review</a>
+                `;
+            }
+        }
+
+        const SECTION_TITLES = {
+            'chw-roster': 'My Clients',
+            'chw-triage': 'Method Match',
+            'chw-followups': 'Follow-ups',
+            'chw-side-effects': 'Side Effects',
+            'chw-qa': 'Clinical Q&A',
+            'clinician-mec': 'MEC Analyzer',
+            'clinician-review': 'Clinician Review',
+        };
+
+        function showSection(sectionId) {
+            document.querySelectorAll('.content-section').forEach(s => s.style.display = 'none');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            const target = document.getElementById('view-' + sectionId);
+            if (target) target.style.display = 'block';
+            if (typeof event !== 'undefined' && event.currentTarget && event.currentTarget.classList) {
+                event.currentTarget.classList.add('active');
+            }
+            document.getElementById('view-title').textContent = SECTION_TITLES[sectionId] || sectionId;
+            if (sectionId === 'chw-triage') resetTriage();
+            if (sectionId === 'chw-followups' && typeof loadFollowups === 'function') loadFollowups();
+            if (sectionId === 'chw-side-effects' && typeof loadSideEffects === 'function') loadSideEffects();
+            if (sectionId === 'chw-roster' && typeof loadRoster === 'function') loadRoster();
+        }
+
+        function setLang(lang) {
+            selectedLang = lang;
+            document.querySelectorAll('.lang-badge').forEach(b => b.classList.remove('active'));
+            document.querySelector(`.lang-badge[onclick="setLang('${lang}')"]`).classList.add('active');
+            renderTriageStep();
+        }
+
+        function resetTriage() {
+            triageStep = 0; triageData = {};
+            document.getElementById('triage-form-container').style.display = 'block';
+            document.getElementById('triage-result-container').style.display = 'none';
+            renderTriageStep();
+        }
+
+        function renderTriageStep() {
+            const q = triageQuestions[triageStep];
+            let promptText = q[selectedLang] || q.en;
+            if (q.id === 'admin_area') {
+                const label = adminAreaLabel(triageData.country);
+                promptText = `Analytics only: client ${label}:`;
+            }
+            document.getElementById('triage-prompt').textContent = promptText;
+            document.getElementById('triage-step-display').textContent = `Step ${triageStep + 1} of ${triageQuestions.length}`;
+            document.getElementById('btn-back').style.display = triageStep > 0 ? 'block' : 'none';
+            document.getElementById('btn-next').textContent = triageStep === triageQuestions.length - 1 ? 'Submit' : 'Next';
+
+            const container = document.getElementById('triage-input-container');
+            container.innerHTML = '';
+            if (q.type === 'select') {
+                const sel = document.createElement('select');
+                sel.id = 'triage-input'; sel.className = 'input'; sel.style.width = '100%';
+                const opts = q.options[selectedLang] || q.options['en'];
+                opts.forEach(o => { const opt = document.createElement('option'); opt.value = o; opt.textContent = o; sel.appendChild(opt); });
+                container.appendChild(sel);
+            } else {
+                const inp = document.createElement('input');
+                inp.id = 'triage-input'; inp.className = 'input'; inp.type = q.type; inp.style.width = '100%'; inp.placeholder = '...';
+                container.appendChild(inp);
+            }
+            if (triageData[q.id]) document.getElementById('triage-input').value = triageData[q.id];
+        }
+
+        function nextTriageStep() {
+            const q = triageQuestions[triageStep];
+            const val = document.getElementById('triage-input').value;
+            if (!val) return alert("Required field");
+            triageData[q.id] = val;
+            if (q.id === 'country') {
+                triageData.country_raw = val;
+                triageData.country_match_confidence = 'exact';
+                triageData.location_capture_purpose = 'analytics_only';
+                triageData.location_source = 'provider';
+            }
+            if (q.id === 'admin_area') {
+                triageData.admin_area_raw = val;
+                triageData.admin_area_type = adminAreaLabel(triageData.country);
+                triageData.location_capture_purpose = 'analytics_only';
+                triageData.location_source = 'provider';
+            }
+            if (triageStep < triageQuestions.length - 1) { triageStep++; renderTriageStep(); }
+            else submitTriage();
+        }
+
+        function prevTriageStep() { if (triageStep > 0) { triageStep--; renderTriageStep(); } }
+
+        function speakQuestion() {
+            const q = triageQuestions[triageStep];
+            const utterance = new SpeechSynthesisUtterance(q[selectedLang] || q.en);
+            const voiceMap = { 'en': 'en-US', 'sw': 'en-US', 'fr': 'fr-FR', 'pt': 'pt-PT' };
+            utterance.lang = voiceMap[selectedLang] || 'en-US';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function parseCardField(content, field) {
+            const fields = [
+                'NAME', 'CATEGORY', 'SUMMARY', 'WHY_IT_FITS', 'HOW_IT_WORKS', 'HOW_TO_USE',
+                'COMMON_SIDE_EFFECTS', 'DURATION_OR_REVISIT', 'REFERRAL_REQUIRED',
+                'REFERRAL_REASON', 'FOLLOW_UP_SCHEDULE', 'CITATIONS', 'DETAILS'
+            ].join('|');
+            const re = new RegExp(
+                `(?:^|\\n)\\s*${field}\\s*[:\\-]\\s*([\\s\\S]*?)(?=\\n\\s*(?:${fields})\\s*[:\\-]|\\[\\s*\\/\\s*METHOD_CARD|$)`,
+                'i'
+            );
+            const match = content.match(re);
+            if (!match) return '';
+            return match[1].replace(/^\s*[\*#]+\s*/, '').replace(/\[\s*\/\s*METHOD_CARD\s*\]/gi, '').trim();
+        }
+
+        function yesLike(value) {
+            return ['yes', 'true', 'required', '1'].includes(String(value || '').trim().toLowerCase());
+        }
+
+        function buildMethodCardHtml(card) {
+            const referralBadge = card.referral_required
+                ? '<span class="status-pill status-warn">Referral needed</span>'
+                : '<span class="status-pill status-ok">Can start locally</span>';
+            const methodAttr = escapeHtml(card.name);
+            const referralAttr = card.referral_required ? 'yes' : 'no';
+            const details = [
+                ['Why it fits', card.why_it_fits],
+                ['How it works', card.how_it_works],
+                ['How to use/start', card.how_to_use],
+                ['Common side effects', card.common_side_effects],
+                ['Duration / revisit', card.duration_or_revisit],
+                ['Referral reason', card.referral_reason],
+                ['Follow-up schedule', card.follow_up_schedule],
+                ['Citations', card.citations],
+            ].filter(([, value]) => value).map(([label, value]) =>
+                `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`
+            ).join('');
+            const confidence = card.confidence || {};
+            const confidenceReasons = confidence.confidence_reasons || confidence.reasons || [];
+            const confidenceHtml = confidence.score ? `
+                <div style="margin:0.5rem 0;padding:0.65rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+                    <strong>Confidence:</strong> ${escapeHtml(confidence.level || 'Moderate')} (${escapeHtml(confidence.score)}%)
+                    ${confidenceReasons.length ? `<div class="muted" style="font-size:0.85rem;margin-top:0.35rem;">Why: ${confidenceReasons.map((r) => `✓ ${escapeHtml(r)}`).join(' · ')}</div>` : ''}
+                </div>
+            ` : '';
+            const adherence = card.adherence_prediction || {};
+            const supportLabel = adherence.continuation_support_needed || (
+                adherence.adherence_risk_level === 'high' ? 'High' :
+                adherence.adherence_risk_level === 'moderate' ? 'Medium' :
+                adherence.adherence_risk_level === 'low' ? 'Low' : ''
+            );
+            const adherenceHtml = adherence.available ? `
+                <div style="margin:0.5rem 0;padding:0.65rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;">
+                    <strong>Continuation support needed:</strong> ${escapeHtml(supportLabel)}
+                    <div class="muted" style="font-size:0.85rem;margin-top:0.35rem;">
+                        Predicted continuation: ${Math.round((adherence.adherence_score || 0) * 100)}%.
+                        ${adherence.adherence_reasons?.length ? `Why: ${adherence.adherence_reasons.map((r) => `✓ ${escapeHtml(r)}`).join(' · ')}` : ''}
+                    </div>
+                </div>
+            ` : (adherence.reason ? `
+                <div class="muted" style="font-size:0.8rem;margin:0.4rem 0;">Continuation model: ${escapeHtml(adherence.reason)}</div>
+            ` : '');
+            return `
+                <div class="method-card" data-method="${methodAttr}" data-referral="${referralAttr}">
+                    <div class="card-header">
+                        <div>
+                            <h4>${escapeHtml(card.name)}</h4>
+                            <small class="muted">${escapeHtml(card.category || 'Method option')}</small>
+                        </div>
+                        ${referralBadge}
+                    </div>
+                    <div class="card-body">
+                        <p class="card-summary"><strong>Quick take:</strong> ${escapeHtml(card.summary)}</p>
+                        ${confidenceHtml}
+                        ${adherenceHtml}
+                        <div class="method-action-row">
+                            <button class="btn btn-secondary btn-sm" data-method="${methodAttr}" onclick="askAboutMethodFromButton(this)">Ask question</button>
+                            <button class="btn btn-primary btn-sm" data-method="${methodAttr}" data-referral="${referralAttr}" onclick="selectMethodFromCard(this)">Confirm Client Choice</button>
+                            <button class="btn btn-secondary btn-sm" data-method="${methodAttr}" onclick="createReferralFromButton(this)">Refer</button>
+                            <button class="btn btn-secondary btn-sm" onclick="showSideEffectsFromCard(this)">Side effects</button>
+                            <button class="btn btn-secondary btn-sm" onclick="toggleCardDetails(this)">Read more</button>
+                        </div>
+                        <div class="side-effects-box" style="display:none;">${escapeHtml(card.common_side_effects || 'No side-effect summary was provided for this method.')}</div>
+                        <div class="card-details">${details || escapeHtml(card.summary)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleCardDetails(el) {
+            const details = el.closest('.method-card').querySelector('.card-details');
+            const isVisible = details.style.display === 'block';
+            details.style.display = isVisible ? 'none' : 'block';
+            el.textContent = isVisible ? 'Read more' : 'Hide details';
+        }
+
+        function showSideEffectsFromCard(el) {
+            const box = el.closest('.method-card').querySelector('.side-effects-box');
+            const isVisible = box.style.display === 'block';
+            box.style.display = isVisible ? 'none' : 'block';
+            el.textContent = isVisible ? 'Side effects' : 'Hide side effects';
+        }
+
+        function createReferralFromButton(button) {
+            const methodName = button.getAttribute('data-method');
+            createReferralForMethod(methodName);
+        }
+
+        async function askAboutMethodFromButton(button) {
+            const methodName = button.getAttribute('data-method');
+            const phone = currentClientPhone || triageData.phone;
+            if (!phone) return alert('Client phone is missing.');
+            const question = prompt(`Ask about ${methodName}:`, 'Will this affect bleeding or fertility?');
+            if (!question) return;
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/methods/question`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ method_name: methodName, question }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not answer question');
+                const details = button.closest('.method-card').querySelector('.card-details');
+                details.style.display = 'block';
+                details.innerHTML = `<p><strong>Question:</strong> ${escapeHtml(question)}</p><p><strong>Answer:</strong> ${escapeHtml(data.answer || '')}</p>` + details.innerHTML;
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        function toggleMecVerification(el) {
+            const box = el.nextElementSibling;
+            const isVisible = box.style.display === 'block';
+            box.style.display = isVisible ? 'none' : 'block';
+            el.textContent = isVisible ? 'Read MEC verification' : 'Hide MEC verification';
+        }
+
+        function normalizeBackendCard(card) {
+            return {
+                name: card.name || 'Method option',
+                category: card.category || '',
+                summary: card.summary || 'Review clinical details below.',
+                why_it_fits: card.why_it_fits || '',
+                how_it_works: card.how_it_works || '',
+                how_to_use: card.how_to_use || '',
+                common_side_effects: card.common_side_effects || '',
+                duration_or_revisit: card.duration_or_revisit || '',
+                referral_required: Boolean(card.referral_required),
+                referral_reason: card.referral_reason || '',
+                follow_up_schedule: card.follow_up_schedule || '',
+                citations: card.citations || '',
+                confidence: card.confidence || null,
+                adherence_prediction: card.adherence_prediction || null,
+            };
+        }
+
+        function renderMethodCards(cards) {
+            currentRecommendationCards = (cards || []).map(normalizeBackendCard);
+            return currentRecommendationCards.map(c => buildMethodCardHtml(c)).join('');
+        }
+
+        function cardsFromMecFallback(mecText, rawRec) {
+            const combined = `${mecText || ''}\n${rawRec || ''}`;
+            const inferred = inferActionMethodsFromText(combined);
+            if (!inferred.length) return [];
+            return inferred.map((m) => ({
+                name: m.name,
+                category: '',
+                summary: 'Suggested from MEC safe-method list. Open Read more after selecting for full counseling.',
+                why_it_fits: '',
+                how_it_works: '',
+                how_to_use: '',
+                common_side_effects: '',
+                duration_or_revisit: '',
+                referral_required: m.referral,
+                referral_reason: m.referral ? 'May need a trained provider for insertion or removal.' : '',
+                follow_up_schedule: '',
+                citations: '',
+            }));
+        }
+
+        function parseClinicalOutcome(rawRec, backendCards = null, mecText = '') {
+            if (backendCards && backendCards.length) {
+                return renderMethodCards(backendCards);
+            }
+            const mecFallback = cardsFromMecFallback(mecText, rawRec);
+            if (mecFallback.length) {
+                return `
+                    <p class="muted" style="font-size:0.85rem;margin:0 0 1rem;">Structured cards were built from the MEC safe-method list because this record had no saved card data.</p>
+                    ${renderMethodCards(mecFallback)}
+                `;
+            }
+            if (!rawRec) return '<p style="color:var(--text-muted);">No recommendation available yet. Run a new Method Match from the sidebar.</p>';
+
+            const cardRegex = /\[\s*METHOD_CARD\s*\]([\s\S]*?)\[\s*\/\s*METHOD_CARD\s*\]/gi;
+            const cards = [];
+            let prose = rawRec;
+            let match;
+            while ((match = cardRegex.exec(rawRec)) !== null) {
+                const content = match[1];
+                const details = parseCardField(content, 'DETAILS');
+                cards.push({
+                    name: parseCardField(content, 'NAME') || 'Method option',
+                    category: parseCardField(content, 'CATEGORY') || '',
+                    summary: parseCardField(content, 'SUMMARY') || 'Review clinical details below.',
+                    why_it_fits: parseCardField(content, 'WHY_IT_FITS') || details,
+                    how_it_works: parseCardField(content, 'HOW_IT_WORKS') || '',
+                    how_to_use: parseCardField(content, 'HOW_TO_USE') || '',
+                    common_side_effects: parseCardField(content, 'COMMON_SIDE_EFFECTS') || '',
+                    duration_or_revisit: parseCardField(content, 'DURATION_OR_REVISIT') || '',
+                    referral_required: yesLike(parseCardField(content, 'REFERRAL_REQUIRED')),
+                    referral_reason: parseCardField(content, 'REFERRAL_REASON') || '',
+                    follow_up_schedule: parseCardField(content, 'FOLLOW_UP_SCHEDULE') || '',
+                    citations: parseCardField(content, 'CITATIONS') || '',
+                });
+                prose = prose.replace(match[0], '');
+            }
+
+            currentRecommendationCards = cards;
+            let html = cards.map(c => buildMethodCardHtml(c)).join('');
+
+            prose = prose.replace(/\*\*(.*?)\*\*/g, '$1').trim();
+            if (prose) {
+                html += prose.split('\n').filter(line => line.trim()).map(line =>
+                    `<p style="margin-bottom:0.8rem; line-height:1.6;">${escapeHtml(line.trim())}</p>`
+                ).join('');
+            }
+
+            if (!html) {
+                return `
+                    <div style="white-space:pre-wrap; line-height:1.6;">${escapeHtml(rawRec)}</div>
+                    ${buildPlainTextActionPanel(rawRec)}
+                `;
+            }
+            if (!cards.length) html += buildPlainTextActionPanel(rawRec);
+            return html;
+        }
+
+        function inferActionMethodsFromText(rawRec) {
+            const text = String(rawRec || '');
+            const safePart = text.includes('METHODS SAFE TO RECOMMEND')
+                ? text.split('METHODS SAFE TO RECOMMEND')[1].split('METHODS REQUIRING PROVIDER JUDGMENT')[0]
+                : text;
+            const candidates = [
+                ['Contraceptive implant', /implant|jadelle|implanon|sino/i, true],
+                ['IUD', /iud|iucd|intrauterine|mirena|copper/i, true],
+                ['Contraceptive injection', /inject|dmpa|depo|sayana/i, false],
+                ['Contraceptive pills', /pill|oral contraceptive|coc|pop/i, false],
+                ['Condoms', /condom/i, false],
+                ['Emergency contraception', /emergency contraception/i, false],
+            ];
+            const found = [];
+            candidates.forEach(([name, re, referral]) => {
+                if (re.test(safePart) && !found.some(f => f.name === name)) {
+                    found.push({ name, referral });
+                }
+            });
+            return found.slice(0, 4);
+        }
+
+        function buildPlainTextActionPanel(rawRec) {
+            const methods = inferActionMethodsFromText(rawRec);
+            if (!methods.length) return '';
+            return `
+                <div class="method-fallback-actions">
+                    <h4 style="margin:0 0 0.5rem;">Choose a method from the safe options</h4>
+                    <p class="muted" style="font-size:0.85rem;margin:0 0 0.75rem;">The response did not include cards, so these actions were inferred from the safe-method list.</p>
+                    ${methods.map(m => `
+                        <div class="method-action-row fallback-method-row">
+                            <strong style="min-width:160px;">${escapeHtml(m.name)}</strong>
+                            <button class="btn btn-primary btn-sm" data-method="${escapeHtml(m.name)}" data-referral="${m.referral ? 'yes' : 'no'}" onclick="selectMethodFromCard(this)">Confirm Client Choice</button>
+                            <button class="btn btn-secondary btn-sm" data-method="${escapeHtml(m.name)}" onclick="createReferralFromButton(this)">Refer</button>
+                            <button class="btn btn-secondary btn-sm" onclick="alert('Open Read more or use the method library after selection for side effects and follow-up guidance.')">Side effects</button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderTriageResult(data) {
+            window.lastFhirData = data.fhir_view;
+            currentClientPhone = triageData.phone || currentClientPhone || '';
+
+            const rawRec = data.recommendation || data.result || "";
+            const displayCards = data.recommendation_packet?.recommended_methods || data.method_cards || [];
+            const cardCount = (displayCards || []).length || data.method_cards_count || 0;
+            const packetHtml = window.ProviderRecommendations?.renderPacket(data.recommendation_packet) || '';
+            const statusHint = cardCount
+                ? `<p class="muted" style="font-size:0.85rem;">${cardCount} method option(s) ready — use the buttons on each card.</p>`
+                : `<p style="font-size:0.85rem;padding:0.75rem;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;">No structured cards in this job yet. If you only see yellow MEC text, restart <strong>worker.py</strong> and submit a new match.</p>`;
+
+            document.getElementById('triage-final-result').innerHTML = `
+                <div style="padding: 1.5rem;">
+                    <div class="workflow-steps" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;font-size:0.8rem;">
+                        <span class="status-pill status-ok">1. Review cards</span>
+                        <span class="status-pill">2. Counsel client</span>
+                        <span class="status-pill">3. Confirm client choice or refer</span>
+                        <span class="status-pill">4. Send instructions</span>
+                    </div>
+                    ${packetHtml}
+                    <h3 style="margin-bottom: 0.5rem; color: var(--text);">Top Recommendations</h3>
+                    ${statusHint}
+                    <div class="clinical-content" style="color: var(--text); line-height: 1.6;">
+                        ${parseClinicalOutcome(rawRec, displayCards || [], data.mec_result || '')}
+                    </div>
+                    
+                    <div style="margin-top: 1.5rem; padding: 1rem; background: #fffaf0; border: 1px solid #feebc8; border-radius: 8px;">
+                        <h5 style="margin:0; font-size:0.75rem; color:#9c4221; text-transform:uppercase;">MEC Clinical Safety Verification</h5>
+                        <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem;" onclick="toggleMecVerification(this)">Read MEC verification</button>
+                        <pre class="mec-verification" style="display:none; font-size: 0.75rem; margin: 0.5rem 0 0 0; color: #7b341e; white-space:pre-wrap; max-height:260px; overflow:auto;">${escapeHtml(data.mec_result || 'Verified against Kenya FP Guidelines')}</pre>
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
+                        <button class="btn btn-secondary" style="flex:1; font-size:0.8rem;" onclick="downloadFhir()">Download FHIR Record</button>
+                        <button class="btn btn-secondary" style="flex:1; font-size:0.8rem;" onclick="window.print()">Print Note</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function pollTriageResult(pollUrl, attempts = 0) {
+            if (attempts > 60) {
+                document.getElementById('triage-final-result').innerHTML = '<div class="alert alert-error">The recommendation is still processing. Please refresh this page in a moment.</div>';
+                return;
+            }
+
+            const res = await fetch(pollUrl);
+            const data = await res.json();
+            if (data.status === 'completed') {
+                renderTriageResult(data);
+                return;
+            }
+            if (data.status === 'failed') {
+                document.getElementById('triage-final-result').innerHTML = `<div class="alert alert-error">Data saved, but clinical recommendation failed: ${data.error || 'Unknown error'}</div>`;
+                return;
+            }
+            setTimeout(() => pollTriageResult(pollUrl, attempts + 1), 2000);
+        }
+
+        async function submitTriage() {
+            document.getElementById('triage-form-container').style.display = 'none';
+            document.getElementById('triage-result-container').style.display = 'block';
+            document.getElementById('triage-final-result').innerHTML = '<div style="padding:3rem; text-align:center;"><div class="loader"></div><p>Generating Scannable Recommendations...</p></div>';
+            try {
+                const res = await fetch('/api/provider/submit_triage', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(triageData)
+                });
+                const data = await res.json();
+                if (!res.ok || data.success === false) {
+                    document.getElementById('triage-final-result').innerHTML = `<div class="alert alert-error">${data.error || 'Could not queue triage job. Is the Redis worker running?'}</div>`;
+                    return;
+                }
+                if ((data.status === 'queued' || data.status === 'processing') && data.poll_url) {
+                    await pollTriageResult(data.poll_url);
+                    return;
+                }
+                renderTriageResult(data);
+            } catch (e) { document.getElementById('triage-final-result').innerHTML = '<div class="alert alert-error">Error generating clinical result. Data saved.</div>'; }
+        }
+
+        async function askCHWQuestion() {
+            const q = document.getElementById('chw-qa-input').value;
+            if (!q) return;
+            const btn = document.getElementById('btn-qa');
+            const resBox = document.getElementById('chw-qa-result');
+            btn.disabled = true; btn.textContent = 'Searching Guidelines...';
+            try {
+                const res = await fetch('/api/provider/mec_query', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: q })
+                });
+                const data = await res.json();
+                resBox.style.display = 'block';
+
+                const rawRec = data.response || "";
+                resBox.innerHTML = `<strong>Clinical Guidance Areas:</strong><div style="margin-top:0.5rem; color: var(--text); line-height:1.5;">${parseClinicalOutcome(rawRec)}</div>`;
+            } catch (e) { alert("Error connecting to clinical assistant."); }
+            finally { btn.disabled = false; btn.textContent = 'Ask AI Assistant'; }
+        }
+
+        async function queryMEC() {
+            const q = document.getElementById('mec-query').value;
+            if (!q) return;
+            const btn = document.getElementById('btn-mec');
+            const resBox = document.getElementById('mec-result');
+            btn.disabled = true; btn.textContent = 'Analyzing Guidelines...';
+            try {
+                const res = await fetch('/api/provider/mec_query', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: q })
+                });
+                const data = await res.json();
+                resBox.style.display = 'block';
+                const rawRec = data.response || "";
+                resBox.innerHTML = `<strong>MEC Clinical Rationale:</strong><div style="margin-top:0.5rem; color: var(--text); line-height:1.5;">${parseClinicalOutcome(rawRec)}</div>`;
+            } catch (e) { alert("Error connecting to MEC engine."); }
+            finally { btn.disabled = false; btn.textContent = 'Analyze Guidelines'; }
+        }
+
+        let rosterClients = [];
+
+        async function loadRoster() {
+            const tbody = document.getElementById('chw-roster-table');
+            const UI = window.DashboardUI;
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center"><span class="spinner"></span> Loading…</td></tr>';
+            try {
+                const res = await fetch('/api/provider/roster');
+                if (!res.ok) throw new Error('Could not load roster');
+                const data = await res.json();
+                rosterClients = data.clients || [];
+                filterRoster();
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="5" class="error-state">${UI.escapeHtml(e.message)}</td></tr>`;
+            }
+        }
+
+        function filterRoster() {
+            const UI = window.DashboardUI;
+            const q = (document.getElementById('roster-search')?.value || '').toLowerCase();
+            const statusFilter = document.getElementById('roster-filter-status')?.value || '';
+            const tbody = document.getElementById('chw-roster-table');
+            tbody.innerHTML = '';
+            const filtered = rosterClients.filter((c) => {
+                const matchQ = !q || (c.name || '').toLowerCase().includes(q) || (c.id || '').includes(q);
+                const matchS = !statusFilter || (c.match_status || '') === statusFilter;
+                return matchQ && matchS;
+            });
+            if (!filtered.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No clients match your filters.</td></tr>';
+                return;
+            }
+            filtered.forEach((c) => {
+                const tr = document.createElement('tr');
+                tr.className = 'row-clickable';
+                tr.onclick = () => openClientDrawer(c.id);
+                const registered = c.registered_at ? new Date(c.registered_at).toLocaleDateString() : '—';
+                tr.innerHTML = `
+                    <td><strong>${UI.escapeHtml(c.name || 'Anonymous')}</strong></td>
+                    <td class="mono">${UI.escapeHtml(c.id)}</td>
+                    <td>${registered}</td>
+                    <td>${UI.escapeHtml(c.method_category_primary || c.method_snippet || '—')}</td>
+                    <td>${UI.statusPill(c.match_status || 'in_progress')}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function openClientDrawer(phone) {
+            const UI = window.DashboardUI;
+            document.getElementById('drawer-overlay').classList.add('open');
+            document.getElementById('client-drawer').classList.add('open');
+            const body = document.getElementById('drawer-body');
+            UI.showLoading(body, 'Loading client…');
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to load');
+                const c = data.client;
+                currentClientPhone = c.phone || phone;
+                document.getElementById('drawer-name').textContent = c.name || 'Client';
+                document.getElementById('drawer-phone').textContent = c.phone || phone;
+                const loc = [c.country, c.admin_area].filter(Boolean).join(', ');
+                const packetHtml = window.ProviderRecommendations?.renderPacket(data.recommendation_packet) || '';
+                const careHtml = window.ProviderClients?.renderCarePlan(data.recommendation_packet?.care_plan_status || {}) || '';
+                const timelineHtml = window.ProviderClients?.renderTimeline(data.timeline || []) || '';
+                const referralsHtml = window.ProviderClients?.renderReferrals(data.referrals || []) || '';
+                const auditHtml = window.ProviderClients?.renderAuditTrail(data.audit_trail || []) || '';
+                const displayCards = data.recommendation_packet?.recommended_methods || data.method_cards || [];
+                body.innerHTML = `
+                    <p>${UI.statusPill(c.match_status)} <span class="muted">${UI.escapeHtml(c.channel || '')}</span></p>
+                    ${loc ? `<p class="muted" style="font-size:0.85rem;">${UI.escapeHtml(loc)}</p>` : ''}
+                    ${c.selected_method ? `<div class="alert alert-success" style="margin:0.75rem 0;">Client chose: <strong>${UI.escapeHtml(c.selected_method)}</strong><br><button class="btn btn-secondary btn-sm" onclick="sendSelectionMessage('${UI.escapeHtml(c.selected_method)}')">Send instructions again</button></div>` : ''}
+                    ${careHtml}
+                    <h4 style="margin:1rem 0 0.5rem;">Recommendation Packet</h4>
+                    ${packetHtml}
+                    <h4 style="margin:1rem 0 0.5rem;">Top Recommendations</h4>
+                    <div class="clinical-content">${parseClinicalOutcome(data.recommendation || '', displayCards || [], data.mec_summary || '')}</div>
+                    <button class="btn btn-secondary btn-sm" style="margin-top:0.75rem;" onclick='openFollowupComposeForClient(${JSON.stringify(c.phone || phone)}, ${JSON.stringify(c.name || "")}, ${JSON.stringify(c.selected_method || "")})'>Compose follow-up</button>
+                    <h4 style="margin:1rem 0 0.5rem;">Referral Tracking</h4>
+                    ${referralsHtml}
+                    <h4 style="margin:1rem 0 0.5rem;">Client Journey Timeline</h4>
+                    ${timelineHtml}
+                    <details style="margin-top:1rem;"><summary class="muted" style="cursor:pointer;">Audit trail</summary>${auditHtml}</details>
+                    ${data.mec_summary ? `<h4 style="margin:1rem 0 0.5rem;">MEC summary</h4><pre style="font-size:0.75rem;white-space:pre-wrap;background:#f8fafc;padding:0.75rem;border-radius:8px;">${UI.escapeHtml(data.mec_summary)}</pre>` : ''}
+                    <h4 style="margin:1rem 0 0.5rem;">Side effects</h4>
+                    ${(data.side_effects && data.side_effects.length) ? data.side_effects.map((s) =>
+                        `<div style="margin-bottom:0.5rem;padding:0.5rem;background:#fff7ed;border-radius:6px;font-size:0.85rem;">
+                            <small class="muted">${UI.formatDate(s.at)}</small><br>${UI.escapeHtml(s.report || '')}
+                        </div>`).join('') : '<p class="muted">No reports filed.</p>'}`;
+            } catch (e) {
+                UI.showError(body, e.message);
+            }
+        }
+
+        function closeClientDrawer() {
+            document.getElementById('drawer-overlay').classList.remove('open');
+            document.getElementById('client-drawer').classList.remove('open');
+        }
+
+        async function loadSideEffects() {
+            const el = document.getElementById('side-effects-table');
+            const UI = window.DashboardUI;
+            UI.showLoading(el, 'Loading reports…');
+            try {
+                const res = await fetch('/api/provider/side_effects');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed');
+                UI.renderSimpleTable(el, [
+                    { key: 'phone', label: 'Client' },
+                    { key: 'at', label: 'When', render: (r) => UI.formatDate(r.at) },
+                    { key: 'report', label: 'Report', render: (r) => UI.escapeHtml((r.report || '').slice(0, 200)) },
+                ], data.reports || [], { emptyMessage: 'No side effect reports from your clients.' });
+                el.querySelectorAll('tbody tr').forEach((row, i) => {
+                    const r = (data.reports || [])[i];
+                    if (r && r.phone) {
+                        row.classList.add('row-clickable');
+                        row.onclick = () => openClientDrawer(r.phone);
+                    }
+                });
+            } catch (e) {
+                UI.showError(el, e.message);
+            }
+        }
+
+        function selectMethodFromCard(button) {
+            const methodName = button.getAttribute('data-method');
+            const referralRequired = button.getAttribute('data-referral') === 'yes';
+            selectRecommendedMethod(methodName, referralRequired);
+        }
+
+        async function selectRecommendedMethod(methodName, referralRequired, extra = {}) {
+            const UI = window.DashboardUI;
+            const phone = currentClientPhone || triageData.phone;
+            if (!phone) return alert('Client phone is missing.');
+
+            const counseling = {
+                informed_choice_confirmed: confirm('Has the client chosen this method freely after counseling?'),
+                side_effects_explained: confirm('Have common side effects been explained?'),
+                warning_signs_explained: confirm('Have warning signs been explained?'),
+                sti_condom_counseling_done: confirm('Was STI/condom counseling done where relevant?'),
+                referral_explained: referralRequired ? confirm('Was the referral need explained?') : true,
+            };
+
+            let referral = null;
+            if (referralRequired) {
+                const facility = prompt('Referral facility/hospital name:');
+                if (!facility) return alert('Referral facility is required for this method.');
+                referral = {
+                    facility_name: facility,
+                    referral_destination: facility,
+                    referral_reason: prompt('Referral reason (e.g. insertion, clinician review, complex history):') || 'Requires provider support',
+                    referral_type: 'procedure',
+                    appointment_text: prompt('Appointment date/time or instructions (optional):') || '',
+                    note: prompt('Referral note for the client (optional):') || '',
+                    urgency: 'routine',
+                };
+            }
+
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/select_method`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ method: methodName, counseling, referral, ...extra }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Selection failed');
+                alert(`${methodName} confirmed as the client's choice. Follow-up tasks were created.`);
+                await sendSelectionMessage(methodName, referral);
+                loadRoster();
+            } catch (e) {
+                if (e.message.includes('Clinical Override Required')) {
+                    const overrideReason = prompt('Clinical Override Required: why is the client choosing a method outside the recommendation list?');
+                    if (!overrideReason) return;
+                    return selectRecommendedMethod(methodName, referralRequired, { ...extra, override_reason: overrideReason });
+                }
+                if (e.message.includes('High-Risk Clinical Decision')) {
+                    const safetyReason = prompt('High-Risk Clinical Decision: document the safety justification.');
+                    if (!safetyReason) return;
+                    const ack = confirm('Clinician acknowledgment: confirm that a clinician has reviewed this high-risk decision.');
+                    if (!ack) return;
+                    return selectRecommendedMethod(methodName, referralRequired, { ...extra, safety_override_reason: safetyReason, clinician_acknowledgment: true });
+                }
+                alert(e.message);
+            }
+        }
+
+        async function createReferralForMethod(methodName) {
+            const phone = currentClientPhone || triageData.phone;
+            if (!phone) return alert('Client phone is missing.');
+            const facility = prompt(`Referral facility/hospital for ${methodName}:`);
+            if (!facility) return;
+            const appointmentText = prompt('Appointment date/time or instructions (optional):') || '';
+            const note = prompt('Referral note for the client (optional):') || '';
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/referral`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        method: methodName,
+                        facility_name: facility,
+                        referral_destination: facility,
+                        referral_reason: prompt('Referral reason:', note || 'Requires provider support') || 'Requires provider support',
+                        referral_type: 'procedure',
+                        appointment_text: appointmentText,
+                        note,
+                        urgency: 'routine',
+                    }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not create referral');
+                alert(`Referral created for ${facility}.`);
+                await sendSelectionMessage(methodName, {
+                    facility_name: facility,
+                    appointment_text: appointmentText,
+                    note,
+                });
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        async function sendSelectionMessage(methodName, referral = null) {
+            const phone = currentClientPhone || triageData.phone;
+            if (!phone) return alert('Client phone is missing.');
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/send_selection_message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ method: methodName, referral }),
+                });
+                const data = await res.json();
+                if (!res.ok || data.success === false) {
+                    throw new Error(data.error || data.delivery?.error || 'Message was not delivered');
+                }
+                alert('Client instructions sent.');
+            } catch (e) {
+                alert(`Could not send client message: ${e.message}`);
+            }
+        }
+
+        const followupTemplates = {
+            checkin: (name, method) =>
+                `Habari ${name || 'friend'},\n\nThis is your ChaguoAI follow-up for ${method || 'your contraceptive method'}. How are you feeling? Reply with any question or concern.`,
+            side_effects: (name, method) =>
+                `Habari ${name || 'friend'},\n\nQuick check on ${method || 'your method'}: have you had bleeding changes, headache, nausea, or mood changes? Reply YES/NO or describe what you feel.`,
+            missed: (name, method) =>
+                `Habari ${name || 'friend'},\n\nReminder about ${method || 'your method'}: if you missed a dose or appointment, reply here and your CHW will guide you.`,
+        };
+
+        function applyFollowupTemplate() {
+            const key = document.getElementById('followup-template')?.value;
+            if (!key || !followupTemplates[key]) return;
+            const name = followupComposeContext.name || '';
+            const method = followupComposeContext.method || 'your method';
+            document.getElementById('followup-compose-text').value = followupTemplates[key](name, method);
+        }
+
+        let followupComposeContext = { phone: '', name: '', method: '' };
+
+        function openFollowupComposeForClient(phone, name, method) {
+            followupComposeContext = { phone, name, method };
+            showSection('chw-followups');
+            const area = document.getElementById('followup-compose-text');
+            if (area && !area.value.trim()) {
+                area.value = followupTemplates.checkin(name, method);
+            }
+            loadFollowups();
+        }
+
+        async function sendComposedFollowup(phone, name, method) {
+            const custom = (document.getElementById('followup-compose-text')?.value || '').trim();
+            if (!custom) return alert('Write a message in the compose box first.');
+            const UI = window.DashboardUI;
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/compose_followup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: custom, method, reason: 'CHW follow-up' }),
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || data.delivery?.error || 'Message not sent');
+                alert(`Follow-up sent to ${name || phone}.`);
+                loadFollowups();
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        async function runFollowupAutomation() {
+            try {
+                const res = await fetch('/api/provider/followups/run_automation', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Automation failed');
+                alert(`Automation complete. Sent: ${data.sent || 0}, escalated: ${data.escalated || 0}, skipped: ${data.skipped || 0}.`);
+                loadFollowups();
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        async function loadFollowups() {
+            const listEl = document.getElementById('followups-client-list');
+            const tableEl = document.getElementById('followups-table');
+            const UI = window.DashboardUI;
+            if (listEl) UI.showLoading(listEl, 'Loading clients…');
+            try {
+                const res = await fetch('/api/provider/followups');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed');
+                const tasks = data.followups || [];
+                const groups = window.ProviderFollowups?.groupByClient(tasks) || [];
+                listEl.innerHTML = window.ProviderFollowups?.renderClientRows(groups) || '<p class="empty-state">No follow-up clients yet.</p>';
+                UI.renderSimpleTable(tableEl, [
+                    { key: 'client_name', label: 'Client' },
+                    { key: 'phone', label: 'Phone' },
+                    { key: 'method', label: 'Method' },
+                    { key: 'due_at', label: 'Due', render: (r) => UI.formatDate(r.due_at) },
+                    { key: 'reason', label: 'Reason' },
+                    { key: 'status', label: 'Status', render: (r) => UI.statusPill(r.status) },
+                    { key: 'action', label: 'Action', render: (r) => `<button class="btn btn-secondary btn-sm" onclick="recordFollowupOutcome('${UI.escapeHtml(r.id)}')">Record</button>` },
+                ], tasks, { emptyMessage: 'No task lines.' });
+            } catch (e) {
+                if (listEl) UI.showError(listEl, e.message);
+            }
+        }
+
+        async function recordFollowupOutcome(taskId) {
+            const outcome = prompt('Outcome type: continuing, switched, stopped, pregnancy_reported, referred, lost_to_followup');
+            if (!outcome) return;
+            const selectedMethod = prompt('Selected/current method (optional):') || '';
+            const switchedTo = outcome === 'switched' ? (prompt('Switched to which method?') || '') : '';
+            const sideEffects = prompt('Side effects reported (comma separated, optional):') || '';
+            const pregnancyStatus = prompt('Pregnancy status: not_pregnant, possible, confirmed, unknown', 'unknown') || 'unknown';
+            const continuationStatus = prompt('Continuation status: continuing, switched, stopped, referred, lost_to_followup', outcome === 'continuing' ? 'continuing' : outcome) || outcome;
+            const note = prompt('Short clinical note (optional):') || '';
+            const structured_outcome = {
+                outcome_type: outcome,
+                selected_method: selectedMethod,
+                switched_to_method: switchedTo,
+                side_effects: sideEffects.split(',').map((s) => s.trim()).filter(Boolean),
+                pregnancy_status: pregnancyStatus,
+                continuation_status: continuationStatus,
+                notes: note,
+            };
+            try {
+                const res = await fetch(`/api/provider/followups/${encodeURIComponent(taskId)}/outcome`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ outcome, note, structured_outcome }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not record outcome');
+                loadFollowups();
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        async function updateReferralStatus(referralId, status) {
+            const phone = currentClientPhone;
+            if (!phone || !referralId) return alert('Open a client first.');
+            const note = prompt(`Note for marking referral ${status} (optional):`) || '';
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/referrals/${encodeURIComponent(referralId)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status, note }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not update referral');
+                alert(`Referral marked ${status}.`);
+                openClientDrawer(phone);
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        async function loadClinicalReview() {
+            const phone = (document.getElementById('clinical-review-phone')?.value || '').trim();
+            const target = document.getElementById('clinical-review-result');
+            const UI = window.DashboardUI;
+            if (!phone) return alert('Enter a client phone number.');
+            UI.showLoading(target, 'Loading clinical review…');
+            try {
+                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/clinical_review`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not load clinical review');
+                target.innerHTML = window.ProviderClients?.renderClinicalReview(data) || '<p class="muted">No review data.</p>';
+            } catch (e) {
+                UI.showError(target, e.message);
+            }
+        }
+
+        function downloadFhir() {
+            if (!window.lastFhirData) return;
+            const blob = new Blob([JSON.stringify(window.lastFhirData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'fhir.json'; a.click();
+        }
+
+        async function logout() { await fetch('/api/provider/logout', { method: 'POST' }); window.location.href = '/provider/login'; }
+
+        init();
+    </script>
+</body>
+
+</html>

@@ -13,14 +13,14 @@ Since you have already enabled the necessary APIs in Google Cloud, here is exact
 To let your local `main.py` code securely talk to your Cloud Firestore database and Vertex AI, you need a Service Account Key.
 1. In the Google Cloud Console, search for **Service Accounts** in the top search bar.
 2. Click **Create Service Account** at the top.
-3. Name it `mhc-backend-sa` and click **Create and Continue**.
+3. Name it `backend-sa` and click **Create and Continue**.
 4. Important: Under **Select a role**, grant it the following roles:
    * **Editor** (For testing purposes, this gives it access to everything like Firestore and Vertex).
 5. Click **Done**.
 6. Find the new service account in the list, click the three dots (`⋮`) under Actions, and select **Manage keys**.
 7. Click **ADD KEY** -> **Create new key** -> Choose **JSON** and click **Create**.
 8. A `.json` file will download to your computer.
-9. **Action:** Move this `.json` file into your `c:\Users\Admin\Desktop\MHC\mhc-backend` folder. Rename it to something simple, like `mhc-gcp-key.json`.
+9. **Action:** Move this `.json` file into your `c:\Users\Admin\Desktop\MHC\backend` folder. Rename it to something simple, like `mhc-gcp-key.json`.
 10. In your `.env` file, set `GOOGLE_APPLICATION_CREDENTIALS=./mhc-gcp-key.json`
 
 ### `GEMINI_API_KEY`
@@ -49,7 +49,7 @@ If you put it in the cloud immediately, you would have to redeploy it to Google 
 
 ### The Production Workflow (The Cloud)
 Once the chatbot is completely finished, perfectly tested, and ready for actual users:
-1. You will deploy `mhc-backend` to **Google Cloud Run** or **Google Cloud Functions**.
-2. Google Cloud will give you a permanent, live URL (e.g., `https://mhc-backend-xyz.a.run.app`).
+1. You will deploy `backend` to **Google Cloud Run** or **Google Cloud Functions**.
+2. Google Cloud will give you a permanent, live URL (e.g., `https://backend-xyz.a.run.app`).
 3. You will go back into Twilio and replace the Ngrok URL with this permanent Cloud URL.
 4. From then on, the chatbot will run 24/7 in the cloud, and you won't need your laptop open!

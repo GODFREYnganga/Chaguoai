@@ -9,7 +9,7 @@ To build the Contraception DSS, you will need a Google Cloud Project with the fo
 - **Cloud Run API:** For hosting the dashboard or larger services.
 
 ## 2. Authentication
-1.  **Service Account:** Create a service account named `mhc-backend-sa`.
+1.  **Service Account:** Create a service account named `backend-sa`.
 2.  **Roles:** Assign the following roles:
     - `Vertex AI User`
     - `Cloud Datastore User` (for Firestore)
@@ -18,4 +18,4 @@ To build the Contraception DSS, you will need a Google Cloud Project with the fo
 
 ## 3. Storage Setup
 - **Firestore:** Create a database in **Native Mode**. Select a region close to Kenya (e.g., `europe-west1` or `europe-west2` as currently there are no GCP regions in East Africa).
-- **Cloud Storage:** Create a bucket `mhc-knowledge-base` for storing raw PDFs.
+- **Cloud Storage:** Create a bucket `knowledge-base` for storing raw PDFs.

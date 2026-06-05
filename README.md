@@ -10,6 +10,7 @@ ChaguoAI is a professional-grade clinical decision support system (DSS) designed
 - **Unified Provider Portal:** A professional web interface for Community Health Workers (CHWs) and Clinicians to manage user rosters and run advanced assessments.
 - **Multi-Channel Delivery:** Seamless interaction across WhatsApp (Twilio), USSD (Africa's Talking), and Web.
 - **Analytics Geography:** Optional country and region capture for dashboards only — never used in WHO MEC or Method Match logic. See [docs/geography.md](docs/geography.md).
+- **ML Adherence Model:** LightGBM continuation-support annotations (shadow mode) trained on Western Kenya service statistics.
 
 ## Architecture
 
@@ -27,12 +28,12 @@ The system follows a strict clinical safety pipeline:
 ### 2. Installation
 ```bash
 git clone <your-fork-or-upstream-url>
-cd Contraceptives_DSS/mhc-backend
+cd Contraceptives_DSS/backend
 pip install -r requirements.txt
 ```
 
 ### 3. Configuration
-1. Copy `mhc-backend/.env.example` to `mhc-backend/.env`.
+1. Copy `config/.env.example` to `backend/.env`.
 2. Populate the `.env` file with your API keys and project IDs.
 3. Set `GOOGLE_APPLICATION_CREDENTIALS` to a Firebase service account path outside the repository, or provide inline JSON through your deployment secret manager.
 4. Set a strong `FLASK_SECRET_KEY` and `ADMIN_ACCESS_CODE`; production startup/login should not rely on defaults.
@@ -40,14 +41,19 @@ pip install -r requirements.txt
 ### 4. Build the Knowledge Base
 Run the ingestor to process the clinical PDFs into the vector store:
 ```bash
-python rag_ingestor.py
+python rag_ingestor.py --from-chunks   # rebuild from committed chunk JSON (no PDFs)
+# or
+python rag_ingestor.py                 # full PDF ingest
 ```
-The clinical PDFs are not committed to the open-source repository. Place them in `mhc-knowledge/` or update the `KENYA_FP_PDF`, `WHO_MEC_PDF`, and `WHO_SPR_PDF` environment variables.
+The clinical PDFs are not committed to the open-source repository. Place them in `knowledge/` or update the `KENYA_FP_PDF`, `WHO_MEC_PDF`, and `WHO_SPR_PDF` environment variables. For judges without PDFs, use `--from-chunks`.
 
 ### 5. Start the Server
 ```bash
+cd backend
 python main.py
 ```
+
+In **development** (`APP_ENV` / `FLASK_ENV` not set to `production`), `main.py` binds to `0.0.0.0` and enables auto-reload when you save code. Set `FLASK_DEBUG=0` or `FLASK_RUN_HOST=127.0.0.1` in `backend/.env` to override.
 
 ### 6. Background Triage Worker
 Provider triage recommendations run through Redis Queue (RQ), so production needs both a web service and a worker service.
@@ -62,7 +68,7 @@ GEMINI_TIMEOUT_MS=20000
 
 Local worker:
 ```bash
-cd mhc-backend
+cd backend
 python worker.py
 ```
 
@@ -114,6 +120,8 @@ WhatsApp users **type** country and region (no long list menus). The CHW provide
 
 Full design, Firestore fields, and APIs: [docs/geography.md](docs/geography.md).
 
+USSD Method Match runs **asynchronously** via the Redis worker (press **3** to check results). Setup: [docs/ussd_setup.md](docs/ussd_setup.md).
+
 Run geography unit tests:
 
 ```bash
@@ -122,16 +130,16 @@ python -m unittest discover -s tests/unit -t . -v -p "test_geography.py"
 
 ## Project Structure
 
-- `mhc-backend/`: Flask application (`application.py`, `main.py` entrypoint).
+- `backend/`: Flask application (`application.py`, `main.py` entrypoint).
   - `routes/`: HTTP route handlers grouped by public, admin, and provider APIs.
   - `core/`: Shared HTTP, auth, and serialization helpers.
   - `whatsapp/`: WhatsApp survey constants, helpers, and webhook flow.
-- `mhc-dashboard/`: HTML templates for provider and admin portals.
+- `dashboard/`: HTML templates for provider and admin portals.
 - `static/`: Global CSS, JS, and clinical media assets.
 - `tests/unit/` and `tests/integration/`: Offline and opt-in live tests.
-- `config/`: Environment template (`config/.env.example` → copy to `mhc-backend/.env`).
+- `config/`: Environment template (`config/.env.example` → copy to `backend/.env`).
 - `docs/`: Technical deployment guides and schema documentation.
-- `mhc-knowledge/`: Local-only clinical PDFs for RAG retrieval (not committed).
+- `knowledge/`: Local-only clinical PDFs for RAG retrieval (not committed).
 - `chaguoai_model/`: Optional ML training project; raw data and generated outputs are gitignored.
 
 ## Accessing the Dashboards

@@ -12,7 +12,7 @@ This project needs **three Render resources**:
 
 Render deploys from Git. Commit and push your repo (do **not** commit `.env` or Firebase JSON files).
 
-**RAG on deploy:** Commit `mhc-backend/knowledge_base/chunks/*_chunks.json` so the build can rebuild Chroma without PDFs.  
+**RAG on deploy:** Commit `backend/knowledge_base/chunks/*_chunks.json` so the build can rebuild Chroma without PDFs.  
 (`chroma_db/` stays gitignored.)
 
 ---
@@ -34,7 +34,7 @@ Render deploys from Git. Commit and push your repo (do **not** commit `.env` or 
 |--------|--------|
 | **Name** | `chaguoai-web` |
 | **Region** | Closest to your users (e.g. Frankfurt) |
-| **Root Directory** | `mhc-backend` |
+| **Root Directory** | `backend` |
 | **Runtime** | Python 3 |
 | **Build Command** | `pip install -r requirements.txt && python rag_ingestor.py --from-chunks` |
 | **Start Command** | `gunicorn main:app --bind 0.0.0.0:$PORT` |
@@ -80,7 +80,7 @@ Optional but recommended: all `TWILIO_CONTENT_*_SID` variables, `CHAGUOAI_ADHERE
 
 | Setting | Value |
 |--------|--------|
-| **Root Directory** | `mhc-backend` |
+| **Root Directory** | `backend` |
 | **Build Command** | `pip install -r requirements.txt` |
 | **Start Command** | `python worker.py` |
 
@@ -115,7 +115,7 @@ The worker does not need to be public; it only talks to Redis and external APIs.
 
 To run automated follow-ups on a schedule, add a **Cron Job** on Render:
 
-- **Root Directory:** `mhc-backend`  
+- **Root Directory:** `backend`  
 - **Schedule:** e.g. `0 */6 * * *` (every 6 hours)  
 - **Command:** `python followup_tasks.py`  
 

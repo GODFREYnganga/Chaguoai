@@ -124,10 +124,10 @@ The model also feeds `model_training_events` through structured follow-up outcom
 
 ### Follow-up automation
 
-`mhc-backend/followup_tasks.py` can be run from a scheduler or manually:
+`backend/followup_tasks.py` can be run from a scheduler or manually:
 
 ```bash
-cd mhc-backend
+cd backend
 python followup_tasks.py
 ```
 

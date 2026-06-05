@@ -5,7 +5,7 @@ after WHO MEC filtering and must never make clinical eligibility decisions.
 
 ## Serving Role
 
-The backend service in `mhc-backend/model_adherence.py` loads the trained
+The backend service in `backend/model_adherence.py` loads the trained
 LightGBM artifact, encoders, feature metadata, and model metadata from
 `chaguoai_model/outputs`.
 

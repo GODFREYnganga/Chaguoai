@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Received — ChaguoAI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="auth-page">
+
+    <div class="auth-wrapper">
+        <div class="card confirmation-card">
+            <div class="confirmation-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+            </div>
+
+            <h1>Application submitted</h1>
+            <p class="confirmation-lead">
+                Thank you for applying to join ChaguoAI. Your account is <strong>pending administrator approval</strong> before you can access the provider portal.
+            </p>
+
+            <p id="confirmation-email" class="confirmation-email muted" hidden></p>
+
+            <ol class="confirmation-steps">
+                <li class="confirmation-step confirmation-step--done">
+                    <span class="step-num">1</span>
+                    <div>
+                        <strong>Application received</strong>
+                        <p>We have saved your details securely.</p>
+                    </div>
+                </li>
+                <li class="confirmation-step confirmation-step--active">
+                    <span class="step-num">2</span>
+                    <div>
+                        <strong>Administrator review</strong>
+                        <p>A programme admin will verify your credentials and approve your account.</p>
+                    </div>
+                </li>
+                <li class="confirmation-step">
+                    <span class="step-num">3</span>
+                    <div>
+                        <strong>Portal access</strong>
+                        <p>Once approved, sign in with your email and password at the provider login page.</p>
+                    </div>
+                </li>
+            </ol>
+
+            <div class="confirmation-actions">
+                <a href="/provider/login" class="btn btn-secondary btn-block">Go to provider login</a>
+                <a href="/provider/register" class="btn btn-ghost btn-block">Submit another application</a>
+            </div>
+
+            <div class="confirmation-admin-box">
+                <h2>Are you the programme administrator?</h2>
+                <p>Review and approve pending provider applications from the admin dashboard.</p>
+                <a href="/admin?next=%2Fadmin%2Fportal%3Fsection%3Dapprovals" class="btn btn-primary btn-block">Open approval dashboard</a>
+                <p class="field-hint text-center" style="margin-top: 0.75rem;">
+                    Admin login at <a href="/admin">/admin</a> — after sign-in you go straight to pending approvals.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const params = new URLSearchParams(window.location.search);
+            const email = params.get('email');
+            if (email) {
+                const el = document.getElementById('confirmation-email');
+                el.textContent = 'Registered email: ' + decodeURIComponent(email);
+                el.hidden = false;
+            }
+        })();
+    </script>
+</body>
+</html>

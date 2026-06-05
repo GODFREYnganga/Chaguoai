@@ -13,7 +13,7 @@ ChaguoAI collects **country** and **administrative region** (county, state, dist
 | Clinical separation | `geography.strip_analytics_fields()` removes location from MEC mapping and LLM survey context |
 | Channel-appropriate UX | WhatsApp: free text + fuzzy confirm; USSD: free text before Q1; Provider portal: 54-country dropdown + region text |
 | Raw + normalized storage | `country_raw` / `country` and `admin_area_raw` / `admin_area` for audit and charts |
-| Single source of truth | `mhc-backend/geography.py` + `data/geography_aliases.json` |
+| Single source of truth | `backend/geography.py` + `data/geography_aliases.json` |
 
 ## Firestore fields
 
@@ -82,7 +82,7 @@ Backend normalizes provider submissions on `POST /api/provider/submit_triage`.
 
 ## Extending aliases
 
-Edit `mhc-backend/data/geography_aliases.json`:
+Edit `backend/data/geography_aliases.json`:
 
 ```json
 {
@@ -101,7 +101,7 @@ Country and region are **self-reported** and used in aggregate reporting. Do not
 ## Tests
 
 ```bash
-cd mhc-backend
+cd backend
 python -m unittest test_geography.py -v
 ```
 

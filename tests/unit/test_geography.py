@@ -7,6 +7,7 @@ from geography import (
     MATCH_EXACT,
     MATCH_FUZZY,
     MATCH_UNMATCHED,
+    dial_code_for_country,
     normalize_country,
     normalize_admin_area,
     is_valid_location_input,
@@ -58,6 +59,10 @@ class TestGeography(unittest.TestCase):
 
     def test_admin_label_kenya(self):
         self.assertEqual(admin_area_label("Kenya"), "county")
+
+    def test_dial_code_for_country(self):
+        self.assertEqual(dial_code_for_country("Uganda"), "+256")
+        self.assertEqual(dial_code_for_country("kenya"), "+254")
 
 
 if __name__ == "__main__":

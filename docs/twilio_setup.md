@@ -16,7 +16,7 @@ To get the Contraception DSS communicating via WhatsApp, you need to set up a Tw
 Once you are on the Twilio Console (dashboard):
 1. In the top left or center of your dashboard, you will see your **Account Info**.
 2. Locate the **Account SID** and **Auth Token**. You need to click the "copy" icon or "show" to see the auth token.
-3. Open the `mhc-backend/.env` file in your project and add these credentials:
+3. Open the `backend/.env` file in your project and add these credentials:
    ```env
    TWILIO_ACCOUNT_SID=your_account_sid_here
    TWILIO_AUTH_TOKEN=your_auth_token_here
@@ -33,7 +33,7 @@ Since getting a dedicated WhatsApp Business number requires Meta approval, we us
 ## Step 4: Expose your Local Server to the Internet (Ngrok)
 Twilio needs a public URL to send incoming messages to your Python script. Since your script is running locally (e.g., `http://localhost:8080`), you must use a tool like Ngrok.
 1. Download and install [Ngrok](https://ngrok.com/).
-2. Run your Flask app: `python main.py` (ensure you are in the `mhc-backend` folder).
+2. Run your Flask app: `python main.py` (ensure you are in the `backend` folder).
 3. Open a new terminal window and run: `ngrok http 8080`.
 4. Ngrok will provide a public URL that looks like `https://<random-characters>.ngrok-free.app`. Copy this **Forwarding URL**.
 
