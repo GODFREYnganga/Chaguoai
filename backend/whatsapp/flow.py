@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import session
+import re
 
 from firebase_admin import firestore
 
@@ -11,6 +11,7 @@ from clinical_pipeline import generate_whatsapp_chat_reply
 from db_client import get_db
 from followup_tasks import attach_client_followup_reply
 from geography import (
+    NormalizedCountry,
     admin_area_prompt,
     build_admin_area_firestore_fields,
     build_country_firestore_fields,
@@ -22,7 +23,7 @@ from geography import (
     normalize_admin_area,
     normalize_country,
 )
-from twilio_messaging import send_whatsapp_message
+from twilio_messaging import send_whatsapp_message, send_whatsapp_options
 from whatsapp.constants import (
     CHILDREN_COUNT_OPTIONS,
     HEALTH_CONDITION_OPTIONS,
@@ -31,6 +32,7 @@ from whatsapp.constants import (
     METHOD_AVOID_OPTIONS,
     PARTNER_SUPPORT_OPTIONS,
     STRINGS,
+    SURVEY_STRINGS,
     YES_NO_OPTIONS,
 )
 from whatsapp.helpers import (
@@ -52,8 +54,8 @@ def process_webhook_background(incoming_msg, user_phone, to_number):
         user = get_user_state(user_phone)
         if not user:
             # First interaction - Ask for Language
-            # Check if this person is being registered by a provider (session or web entry)
-            provider_id = session.get('provider_id') # Fallback if being registered via webhook
+            # Webhook runs in a background thread (no Flask session); provider link is set via portal/triage.
+            provider_id = None
             get_db().collection('contraceptive_users').document(user_phone).set({
                 "stage": "AWAITING_LANGUAGE",
                 "phone": user_phone,
