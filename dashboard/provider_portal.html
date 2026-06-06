@@ -297,6 +297,19 @@
     <script src="/static/js/provider-clients.js"></script>
     <script src="/static/js/provider-followups.js"></script>
     <script>
+        async function apiFetch(url, options = {}) {
+            const res = await fetch(url, {
+                credentials: 'same-origin',
+                ...options,
+                headers: { ...(options.headers || {}) },
+            });
+            if (res.status === 401 && !String(url).includes('/api/provider/login')) {
+                window.location.href = '/provider/login';
+                throw new Error('Session expired. Please log in again.');
+            }
+            return res;
+        }
+
         let currentProvider = null;
         let selectedLang = 'en';
         let triageStep = 0;
@@ -314,7 +327,7 @@
 
         async function loadGeographyCatalog() {
             try {
-                const res = await fetch('/api/geography/countries');
+                const res = await apiFetch('/api/geography/countries');
                 if (!res.ok) throw new Error('catalog unavailable');
                 const data = await res.json();
                 africanCountries = (data.countries || []).map(c => c.name);
@@ -422,7 +435,7 @@
         async function init() {
             try {
                 await loadGeographyCatalog();
-                const res = await fetch('/api/provider/me');
+                const res = await apiFetch('/api/provider/me');
                 if (!res.ok) throw new Error('Unauthorized');
                 currentProvider = await res.json();
                 document.getElementById('user-name').textContent = currentProvider.fullName;
@@ -672,7 +685,7 @@
             const question = prompt(`Ask about ${methodName}:`, 'Will this affect bleeding or fertility?');
             if (!question) return;
             try {
-                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/methods/question`, {
+                const res = await apiFetch(`/api/provider/clients/${encodeURIComponent(phone)}/methods/question`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ method_name: methodName, question }),
@@ -883,9 +896,13 @@
                 return;
             }
 
-            const res = await fetch(pollUrl);
+            const res = await apiFetch(pollUrl);
             const data = await res.json();
             if (data.status === 'completed') {
+                if (data.phone) {
+                    triageData.phone = data.phone;
+                    currentClientPhone = data.phone;
+                }
                 renderTriageResult(data);
                 return;
             }
@@ -901,7 +918,7 @@
             document.getElementById('triage-result-container').style.display = 'block';
             document.getElementById('triage-final-result').innerHTML = '<div style="padding:3rem; text-align:center;"><div class="loader"></div><p>Generating Scannable Recommendations...</p></div>';
             try {
-                const res = await fetch('/api/provider/submit_triage', {
+                const res = await apiFetch('/api/provider/submit_triage', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(triageData)
                 });
@@ -909,6 +926,10 @@
                 if (!res.ok || data.success === false) {
                     document.getElementById('triage-final-result').innerHTML = `<div class="alert alert-error">${data.error || 'Could not queue triage job. Is the Redis worker running?'}</div>`;
                     return;
+                }
+                if (data.phone) {
+                    triageData.phone = data.phone;
+                    currentClientPhone = data.phone;
                 }
                 if ((data.status === 'queued' || data.status === 'processing') && data.poll_url) {
                     await pollTriageResult(data.poll_url);
@@ -925,7 +946,7 @@
             const resBox = document.getElementById('chw-qa-result');
             btn.disabled = true; btn.textContent = 'Searching Guidelines...';
             try {
-                const res = await fetch('/api/provider/mec_query', {
+                const res = await apiFetch('/api/provider/mec_query', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query: q })
                 });
@@ -945,7 +966,7 @@
             const resBox = document.getElementById('mec-result');
             btn.disabled = true; btn.textContent = 'Analyzing Guidelines...';
             try {
-                const res = await fetch('/api/provider/mec_query', {
+                const res = await apiFetch('/api/provider/mec_query', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query: q })
                 });
@@ -964,7 +985,7 @@
             const UI = window.DashboardUI;
             tbody.innerHTML = '<tr><td colspan="5" class="text-center"><span class="spinner"></span> Loading…</td></tr>';
             try {
-                const res = await fetch('/api/provider/roster');
+                const res = await apiFetch('/api/provider/roster');
                 if (!res.ok) throw new Error('Could not load roster');
                 const data = await res.json();
                 rosterClients = data.clients || [];
@@ -1011,7 +1032,7 @@
             const body = document.getElementById('drawer-body');
             UI.showLoading(body, 'Loading client…');
             try {
-                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}`);
+                const res = await apiFetch(`/api/provider/clients/${encodeURIComponent(phone)}`);
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to load');
                 const c = data.client;
@@ -1061,7 +1082,7 @@
             const UI = window.DashboardUI;
             UI.showLoading(el, 'Loading reports…');
             try {
-                const res = await fetch('/api/provider/side_effects');
+                const res = await apiFetch('/api/provider/side_effects');
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed');
                 UI.renderSimpleTable(el, [
@@ -1116,7 +1137,7 @@
             }
 
             try {
-                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/select_method`, {
+                const res = await apiFetch(`/api/provider/clients/${encodeURIComponent(phone)}/select_method`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ method: methodName, counseling, referral, ...extra }),
@@ -1151,7 +1172,7 @@
             const appointmentText = prompt('Appointment date/time or instructions (optional):') || '';
             const note = prompt('Referral note for the client (optional):') || '';
             try {
-                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/referral`, {
+                const res = await apiFetch(`/api/provider/clients/${encodeURIComponent(phone)}/referral`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1182,7 +1203,7 @@
             const phone = currentClientPhone || triageData.phone;
             if (!phone) return alert('Client phone is missing.');
             try {
-                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/send_selection_message`, {
+                const res = await apiFetch(`/api/provider/clients/${encodeURIComponent(phone)}/send_selection_message`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ method: methodName, referral }),
@@ -1231,7 +1252,7 @@
             if (!custom) return alert('Write a message in the compose box first.');
             const UI = window.DashboardUI;
             try {
-                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/compose_followup`, {
+                const res = await apiFetch(`/api/provider/clients/${encodeURIComponent(phone)}/compose_followup`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: custom, method, reason: 'CHW follow-up' }),
@@ -1247,7 +1268,7 @@
 
         async function runFollowupAutomation() {
             try {
-                const res = await fetch('/api/provider/followups/run_automation', { method: 'POST' });
+                const res = await apiFetch('/api/provider/followups/run_automation', { method: 'POST' });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Automation failed');
                 alert(`Automation complete. Sent: ${data.sent || 0}, escalated: ${data.escalated || 0}, skipped: ${data.skipped || 0}.`);
@@ -1263,7 +1284,7 @@
             const UI = window.DashboardUI;
             if (listEl) UI.showLoading(listEl, 'Loading clients…');
             try {
-                const res = await fetch('/api/provider/followups');
+                const res = await apiFetch('/api/provider/followups');
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed');
                 const tasks = data.followups || [];
@@ -1302,7 +1323,7 @@
                 notes: note,
             };
             try {
-                const res = await fetch(`/api/provider/followups/${encodeURIComponent(taskId)}/outcome`, {
+                const res = await apiFetch(`/api/provider/followups/${encodeURIComponent(taskId)}/outcome`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ outcome, note, structured_outcome }),
@@ -1320,7 +1341,7 @@
             if (!phone || !referralId) return alert('Open a client first.');
             const note = prompt(`Note for marking referral ${status} (optional):`) || '';
             try {
-                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/referrals/${encodeURIComponent(referralId)}`, {
+                const res = await apiFetch(`/api/provider/clients/${encodeURIComponent(phone)}/referrals/${encodeURIComponent(referralId)}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status, note }),
@@ -1341,7 +1362,7 @@
             if (!phone) return alert('Enter a client phone number.');
             UI.showLoading(target, 'Loading clinical review…');
             try {
-                const res = await fetch(`/api/provider/clients/${encodeURIComponent(phone)}/clinical_review`);
+                const res = await apiFetch(`/api/provider/clients/${encodeURIComponent(phone)}/clinical_review`);
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Could not load clinical review');
                 target.innerHTML = window.ProviderClients?.renderClinicalReview(data) || '<p class="muted">No review data.</p>';
@@ -1357,7 +1378,7 @@
             const a = document.createElement('a'); a.href = url; a.download = 'fhir.json'; a.click();
         }
 
-        async function logout() { await fetch('/api/provider/logout', { method: 'POST' }); window.location.href = '/provider/login'; }
+        async function logout() { await apiFetch('/api/provider/logout', { method: 'POST' }); window.location.href = '/provider/login'; }
 
         init();
     </script>

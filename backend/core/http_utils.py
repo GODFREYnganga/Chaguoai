@@ -12,23 +12,48 @@ from method_categories import classify_method_category_primary
 from phone_utils import format_client_phone, format_to_e164
 
 
+def client_phone_lookup_candidates(phone, *, country_hint: str | None = None) -> list[str]:
+    """Build possible Firestore document IDs for the same client handset."""
+    raw = str(phone or "").strip()
+    candidates: list[str] = []
+
+    def add(value: str | None) -> None:
+        value = str(value or "").strip()
+        if value and value not in candidates:
+            candidates.append(value)
+
+    add(raw)
+    if raw.startswith("whatsapp:"):
+        add(format_to_e164(raw))
+    if raw.startswith("+"):
+        add(f"whatsapp:{raw}")
+    normalized = format_client_phone(raw, country=country_hint) if country_hint else format_to_e164(raw)
+    add(normalized)
+    if normalized.startswith("+"):
+        add(f"whatsapp:{normalized}")
+    return candidates
+
+
 def resolve_client_phone(phone, *, country_hint: str | None = None):
     """
-    Normalize client phone for Firestore lookups.
-    Uses country_hint, else looks up an existing client record, else defaults to Kenya (+254).
+    Resolve the Firestore document ID for a client phone.
+    Returns the existing document ID when found (including whatsapp:+E164 keys).
     """
     raw = str(phone or "").strip()
+    db = get_db()
+    if db:
+        for candidate in client_phone_lookup_candidates(raw, country_hint=country_hint):
+            doc = db.collection("contraceptive_users").document(candidate).get()
+            if doc.exists:
+                return doc.id
+        for candidate in client_phone_lookup_candidates(raw):
+            doc = db.collection("contraceptive_users").document(candidate).get()
+            if doc.exists:
+                return doc.id
     if raw.startswith("+"):
         return format_client_phone(raw)
     if country_hint:
         return format_client_phone(raw, country=country_hint)
-    db = get_db()
-    if db:
-        for candidate in (raw, format_to_e164(raw)):
-            doc = db.collection("contraceptive_users").document(candidate).get()
-            if doc.exists:
-                stored_country = (doc.to_dict() or {}).get("country")
-                return format_client_phone(raw, country=stored_country)
     return format_client_phone(raw)
 
 

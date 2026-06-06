@@ -7,9 +7,10 @@ import json
 import re
 
 from firebase_admin import firestore
-from flask import Blueprint, jsonify, render_template, request, session, url_for
+from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from admin_analytics import collect_safety_items
 from analytics_service import build_analytics_summary, export_model_training_events
 from app_config import WEB_PROVIDER_MAX_OUTPUT_TOKENS
 from audit_trail import fetch_audit_trail, record_audit_event
@@ -58,6 +59,8 @@ def provider_role(provider_id: str) -> str:
 
 
 def provider_dashboard():
+    if not session.get("provider_id"):
+        return redirect("/provider/login")
     return render_template('provider_portal.html')
 
 def provider_login():
@@ -113,14 +116,38 @@ def api_provider_login():
     password = str(data.get("password") or "")
     if not email or not password:
         return jsonify({"success": False, "error": "Email and password are required"}), 400
-    docs = list(get_db().collection('providers').where(filter=firestore.FieldFilter('email', '==', email)).where(filter=firestore.FieldFilter('status', '==', 'approved')).limit(1).stream())
-    if docs:
-        provider = docs[0].to_dict() or {}
+    approved_docs = list(
+        get_db().collection('providers')
+        .where(filter=firestore.FieldFilter('email', '==', email))
+        .where(filter=firestore.FieldFilter('status', '==', 'approved'))
+        .limit(1)
+        .stream()
+    )
+    if approved_docs:
+        provider = approved_docs[0].to_dict() or {}
         password_hash = provider.get("password_hash")
         if password_hash and check_password_hash(password_hash, password):
-            session['provider_id'] = docs[0].id
+            session['provider_id'] = approved_docs[0].id
+            session.permanent = True
             return jsonify({"success": True, "role": provider.get('role')})
-    return jsonify({"success": False, "error": "Invalid credentials or pending approval"}), 401
+
+    pending_docs = list(
+        get_db().collection('providers')
+        .where(filter=firestore.FieldFilter('email', '==', email))
+        .where(filter=firestore.FieldFilter('status', '==', 'pending'))
+        .limit(1)
+        .stream()
+    )
+    if pending_docs:
+        provider = pending_docs[0].to_dict() or {}
+        password_hash = provider.get("password_hash")
+        if password_hash and check_password_hash(password_hash, password):
+            return jsonify({
+                "success": False,
+                "error": "Your account is pending admin approval. Ask an admin to approve you at /admin.",
+            }), 401
+
+    return jsonify({"success": False, "error": "Invalid email or password"}), 401
 
 def api_provider_logout():
     session.clear()
@@ -237,6 +264,9 @@ def api_provider_side_effects():
     pid = session.get("provider_id")
     if not pid:
         return jsonify({"error": "Unauthorized"}), 401
+    db, db_error = require_db()
+    if db_error:
+        return db_error
     items = collect_safety_items(db, provider_id=pid, limit=50)
     reports = [i for i in items if i.get("type") == "side_effect"]
     return jsonify({"reports": reports})
@@ -703,13 +733,13 @@ def api_provider_submit_triage():
             data['admin_area_raw'] = str(data['admin_area']).strip()
             data['admin_area'] = normalize_admin_area(data['admin_area'], data.get('country'))
 
-    phone = format_client_phone(phone, country=data.get('country'))
+    phone = resolve_client_phone(phone, country_hint=data.get('country'))
     data['phone'] = phone
     data['assigned_provider_id'] = pid
     data['stage'] = 'REGISTERED'
     data['registered_at'] = firestore.SERVER_TIMESTAMP
 
-    get_db().collection('contraceptive_users').document(phone).set(data)
+    get_db().collection('contraceptive_users').document(phone).set(data, merge=True)
     job_ref = get_db().collection('triage_jobs').document()
     job_ref.set({
         "status": "queued",
@@ -761,6 +791,7 @@ def api_provider_submit_triage():
         "success": True,
         "status": "queued",
         "job_id": job_ref.id,
+        "phone": phone,
         "poll_url": url_for('provider.api_provider_triage_result', job_id=job_ref.id)
     }), 202
 

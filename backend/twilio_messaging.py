@@ -1,7 +1,8 @@
 import os
 
-from dotenv import load_dotenv
 from twilio.rest import Client as TwilioClient
+
+from env_loader import load_backend_dotenv
 
 from twilio_templates import TwilioTemplateRegistry
 from whatsapp_helpers import (
@@ -11,19 +12,53 @@ from whatsapp_helpers import (
     split_message_at_sentences,
 )
 
-load_dotenv()
+load_backend_dotenv()
 
 TWILIO_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
 TWILIO_SMS_NUMBER = os.environ.get("TWILIO_SMS_NUMBER", "").strip()
 TWILIO_TEMPLATES = TwilioTemplateRegistry.from_env()
 
 
+def _twilio_credentials() -> tuple[str, str]:
+    account_sid = (os.environ.get("TWILIO_ACCOUNT_SID") or "").strip()
+    auth_token = (os.environ.get("TWILIO_AUTH_TOKEN") or "").strip()
+    return account_sid, auth_token
+
+
 def _get_twilio_client():
-    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    account_sid, auth_token = _twilio_credentials()
     if not account_sid or not auth_token:
         return None
     return TwilioClient(account_sid, auth_token)
+
+
+def verify_twilio_credentials() -> None:
+    """Probe Twilio API credentials at startup so misconfigured .env fails fast."""
+    account_sid, auth_token = _twilio_credentials()
+    if not account_sid or not auth_token:
+        print("[Twilio] WARNING: TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN is missing — outbound messages will fail.")
+        return
+    if not account_sid.startswith("AC") or len(account_sid) != 34:
+        print(
+            f"[Twilio] WARNING: TWILIO_ACCOUNT_SID looks invalid (len={len(account_sid)}). "
+            "It should start with AC and be 34 characters."
+        )
+    if len(auth_token) != 32:
+        print(
+            f"[Twilio] WARNING: TWILIO_AUTH_TOKEN length is {len(auth_token)} (expected 32). "
+            "Re-copy the Auth Token from Twilio Console with no extra spaces or characters."
+        )
+    masked_sid = f"{account_sid[:6]}...{account_sid[-4:]}"
+    try:
+        TwilioClient(account_sid, auth_token).api.accounts(account_sid).fetch()
+        print(f"[Twilio] API credentials OK for account {masked_sid}")
+    except Exception as exc:
+        print(
+            f"[Twilio] ERROR: API credentials rejected for account {masked_sid} (error 20003). "
+            "In Twilio Console open the same account, copy the live Auth Token, "
+            "update TWILIO_AUTH_TOKEN in backend/.env, then restart."
+        )
+        print(f"[Twilio] Detail: {exc}")
 
 
 def ensure_whatsapp_prefix(from_number, to_number):

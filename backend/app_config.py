@@ -1,8 +1,8 @@
 import os
 
-from dotenv import load_dotenv
+from env_loader import load_backend_dotenv
 
-load_dotenv()
+load_backend_dotenv()
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_TIMEOUT_MS = int(os.environ.get("GEMINI_TIMEOUT_MS", "20000"))

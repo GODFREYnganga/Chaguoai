@@ -1,26 +1,4 @@
 {
-  "ingested_at": "2026-06-04T15:12:00.254177",
-  "documents": {
-    "kenya_fp_7th": {
-      "document_title": "National Family Planning Guideline for Healthcare Providers, 7th Edition",
-      "pdf_path": "C:\\Users\\Admin\\Desktop\\Contraceptives_DSS\\mhc-backend\\..\\mhc-knowledge\\Signed National Family Planning Guidelines 7th Edition 2025 (1).pdf",
-      "chunks_created": 728,
-      "processing_seconds": 166.1,
-      "ingested_at": "2026-06-04T15:14:46.384088"
-    },
-    "who_mec_6th": {
-      "document_title": "Medical Eligibility Criteria for Contraceptive Use, 6th Edition",
-      "pdf_path": "C:\\Users\\Admin\\Desktop\\Contraceptives_DSS\\mhc-backend\\..\\mhc-knowledge\\WHO MEC 6th Edition (2025).pdf",
-      "chunks_created": 449,
-      "processing_seconds": 118.9,
-      "ingested_at": "2026-06-04T15:16:45.255022"
-    },
-    "who_spr_4th": {
-      "document_title": "Selected Practice Recommendations for Contraceptive Use, 4th Edition",
-      "pdf_path": "C:\\Users\\Admin\\Desktop\\Contraceptives_DSS\\mhc-backend\\..\\mhc-knowledge\\WHO SPR 4th Edition (2025).pdf",
-      "chunks_created": 110,
-      "processing_seconds": 70.9,
-      "ingested_at": "2026-06-04T15:17:56.162631"
-    }
-  }
+  "ingested_at": "2026-06-06T22:47:43.729198",
+  "documents": {}
 }

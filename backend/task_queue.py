@@ -1,10 +1,11 @@
 import os
 
-from dotenv import load_dotenv
 from redis import Redis
 from rq import Queue
 
-load_dotenv()
+from env_loader import load_backend_dotenv
+
+load_backend_dotenv()
 
 TRIAGE_QUEUE_NAME = os.environ.get("TRIAGE_QUEUE_NAME", "triage")
 TRIAGE_JOB_TIMEOUT_SECONDS = int(os.environ.get("TRIAGE_JOB_TIMEOUT_SECONDS", "180"))

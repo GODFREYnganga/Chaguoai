@@ -55,12 +55,29 @@ def _excluded_method_context(client_data: dict[str, Any], method_name: str) -> d
     return None
 
 
-def assert_provider_can_access(client_doc, provider_id: str) -> dict[str, Any]:
+def assert_provider_can_access(
+    client_doc,
+    provider_id: str,
+    *,
+    client_ref=None,
+    allow_claim_unassigned: bool = False,
+) -> dict[str, Any]:
     if not client_doc.exists:
-        raise PermissionError("Client not found")
+        raise PermissionError(
+            "Client not found for this phone number. Register them via Method Match first."
+        )
     data = client_doc.to_dict() or {}
-    if data.get("assigned_provider_id") != provider_id:
-        raise PermissionError("Forbidden")
+    assigned = data.get("assigned_provider_id")
+    if not assigned and allow_claim_unassigned:
+        if client_ref is not None:
+            client_ref.update({"assigned_provider_id": provider_id})
+        data["assigned_provider_id"] = provider_id
+        return data
+    if assigned != provider_id:
+        raise PermissionError(
+            "This client is not linked to your provider account. "
+            "Open them from your roster or run Method Match to assign them to you."
+        )
     return data
 
 
@@ -77,7 +94,12 @@ def select_method(
     clinician_acknowledgment: bool = False,
 ) -> dict[str, Any]:
     client_ref = db.collection("contraceptive_users").document(phone)
-    client_data = assert_provider_can_access(client_ref.get(), provider_id)
+    client_data = assert_provider_can_access(
+        client_ref.get(),
+        provider_id,
+        client_ref=client_ref,
+        allow_claim_unassigned=True,
+    )
     info = get_method_info(method_name)
     method_category = classify_method_category_primary(method_name) or info.get("category") or method_name
     referral_required = bool(referral or info.get("referral_required"))

@@ -2,6 +2,7 @@
 
 import unittest
 
+from core.http_utils import client_phone_lookup_candidates
 from geography import dial_code_for_country
 from phone_utils import format_client_phone, format_to_e164
 
@@ -27,6 +28,12 @@ class TestPhoneNormalization(unittest.TestCase):
         self.assertEqual(dial_code_for_country("Nigeria"), "+234")
         self.assertEqual(dial_code_for_country(None), "+254")
         self.assertEqual(dial_code_for_country("Atlantis"), "+254")
+
+    def test_client_phone_lookup_candidates_include_whatsapp_alias(self):
+        candidates = client_phone_lookup_candidates("0757671920", country_hint="Kenya")
+        self.assertIn("0757671920", candidates)
+        self.assertIn("+254757671920", candidates)
+        self.assertIn("whatsapp:+254757671920", candidates)
 
 
 if __name__ == "__main__":
