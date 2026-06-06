@@ -23,7 +23,7 @@ htmlcov/
 *.sqlite3
 *.db
 backend/knowledge_base/chroma_db/
-knowledge/
+
 mhc-backend/
 mhc-knowledge/
 
