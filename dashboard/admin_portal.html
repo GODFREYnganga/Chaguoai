@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Portal - ChaguoAI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+
+<body>
+    <div class="dash-layout">
+        <aside class="dash-sidebar">
+            <div class="sidebar-header">
+                <h2>ChaguoAI Admin</h2>
+                <p class="sidebar-sub">Program analytics</p>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" onclick="showSection('dashboard')">Overview</a>
+                <a href="#" class="nav-item" onclick="showSection('approvals')">Provider approvals <span id="nav-pending-badge" class="nav-badge" style="display:none">0</span></a>
+            </nav>
+        </aside>
+
+        <main class="dash-main">
+            <div class="topbar">
+                <div>
+                    <h2 class="topbar-title" id="topbar-title">Analytics overview</h2>
+                    <p class="topbar-meta" id="generated-at">Loading…</p>
+                </div>
+                <div class="topbar-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="exportClientsCsv()">Export CSV</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="window.location.href='/admin/logout'">Log out</button>
+                </div>
+            </div>
+
+            <div id="alert-box" class="alert" style="display: none;"></div>
+            <div id="dashboard-error" class="alert alert-error" style="display: none;"></div>
+
+            <section id="dashboard" class="content-section dashboard-stack">
+                <div class="cohort-tabs" role="tablist">
+                    <button type="button" class="cohort-tab active" onclick="setCohort('all', this)">All</button>
+                    <button type="button" class="cohort-tab" onclick="setCohort('week', this)">This week</button>
+                    <button type="button" class="cohort-tab" onclick="setCohort('whatsapp', this)">WhatsApp</button>
+                    <button type="button" class="cohort-tab" onclick="setCohort('ussd', this)">USSD</button>
+                    <button type="button" class="cohort-tab" onclick="setCohort('provider', this)">Provider</button>
+                </div>
+
+                <div id="kpi-strip" class="kpi-strip"></div>
+
+                <div class="admin-grid-2">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h3 class="panel-title">Registrations (30 days)</h3>
+                                <p class="panel-subtitle">By method_match_completed_at or registered_at</p>
+                            </div>
+                        </div>
+                        <div id="trend-chart" class="chart-panel"></div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h3 class="panel-title">System health</h3>
+                                <p class="panel-subtitle">Live dependency checks</p>
+                            </div>
+                        </div>
+                        <div id="health-list" class="health-list scroll-panel-sm"></div>
+                    </div>
+                </div>
+
+                <div class="admin-grid-3">
+                    <div class="panel">
+                        <h3 class="panel-title">Channel</h3>
+                        <div id="channel-bars" class="scroll-panel-sm"></div>
+                    </div>
+                    <div class="panel">
+                        <h3 class="panel-title">Language</h3>
+                        <div id="language-bars" class="scroll-panel-sm"></div>
+                    </div>
+                    <div class="panel">
+                        <h3 class="panel-title">Method Match completion</h3>
+                        <div id="completion-panel"></div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3 class="panel-title">Primary method (completed matches)</h3>
+                            <p class="panel-subtitle">From method_category_primary — not keyword scraping</p>
+                        </div>
+                    </div>
+                    <div id="method-bars" class="scroll-panel"></div>
+                </div>
+
+                <div class="admin-grid-2">
+                    <div class="panel">
+                        <h3 class="panel-title">Geography</h3>
+                        <p class="panel-subtitle">Analytics only — excluded from clinical engine</p>
+                        <div id="geo-table"></div>
+                        <p id="geo-footnote" class="table-footnote"></p>
+                    </div>
+                    <div class="panel panel-danger">
+                        <h3 class="panel-title">Safety inbox</h3>
+                        <p class="panel-subtitle">Side effects + pipeline failures</p>
+                        <div id="safety-table" class="scroll-panel"></div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3 class="panel-title">Recent completions</h3>
+                            <p class="panel-subtitle">Sortable table — scales better than card feeds</p>
+                        </div>
+                    </div>
+                    <div id="completions-table"></div>
+                </div>
+            </section>
+
+            <section id="approvals" class="content-section" style="display: none;">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3 class="panel-title">Pending provider applications</h3>
+                            <p class="panel-subtitle">Review credentials and approve CHWs or clinicians for portal access.</p>
+                        </div>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Role</th>
+                                    <th>Credentials</th>
+                                    <th>Contact</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="approvals-table">
+                                <tr><td colspan="5" class="text-center">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/dashboard-ui.js"></script>
+    <script src="/static/js/admin-dashboard.js"></script>
+</body>
+
+</html>

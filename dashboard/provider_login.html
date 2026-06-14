@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Provider Login - Contraception DSS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <div class="auth-wrapper">
+        <div class="card">
+            <div class="brand-header">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4">
+                    </path>
+                </svg>
+                <h1>Provider Login</h1>
+                <p>Welcome back. Please enter your details.</p>
+            </div>
+
+            <div id="alert-box" class="alert" style="display: none;"></div>
+
+            <form id="provider-login-form">
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required placeholder="jane@clinic.com">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Log In</button>
+            </form>
+
+            <p class="text-center" style="margin-top: 1.5rem; font-size: 0.875rem;">
+                Don't have an account? <a href="/provider/register"
+                    style="color: var(--primary); text-decoration: none; font-weight: 500;">Apply here</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('provider-login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            const alertBox = document.getElementById('alert-box');
+
+            btn.disabled = true;
+            btn.textContent = 'Authenticating...';
+            alertBox.style.display = 'none';
+
+            const payload = {
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value
+            };
+
+            try {
+                const res = await fetch('/api/provider/login', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    window.location.href = '/provider';
+                } else {
+                    throw new Error(data.error || 'Login failed');
+                }
+            } catch (err) {
+                alertBox.className = 'alert alert-error';
+                alertBox.textContent = err.message;
+                alertBox.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Log In';
+            }
+        });
+    </script>
+</body>
+
+</html>
