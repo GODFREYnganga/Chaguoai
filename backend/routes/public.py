@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import threading
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, render_template, session, redirect, url_for
+from firebase_admin import firestore
 from twilio.twiml.messaging_response import MessagingResponse
 
 from core.security_utils import twilio_signature_valid
@@ -19,7 +20,23 @@ public_bp = Blueprint("public", __name__)
 
 
 def index():
-    return "Contraception DSS Backend is running. Access /admin or /provider for dashboards."
+    return render_template('welcome.html')
+
+def demo_provider():
+    demo_email = "demo@chaguoai.com"
+    db = get_db()
+    approved_docs = list(
+        db.collection('providers')
+        .where(filter=firestore.FieldFilter('email', '==', demo_email))
+        .where(filter=firestore.FieldFilter('status', '==', 'approved'))
+        .limit(1)
+        .stream()
+    )
+    if approved_docs:
+        session['provider_id'] = approved_docs[0].id
+        session.permanent = True
+        return redirect(url_for('provider.provider_dashboard'))
+    return "Demo account not set up yet. Please ask the administrator to create a provider account with email demo@chaguoai.com", 404
 
 def health():
     checks = run_health_checks()

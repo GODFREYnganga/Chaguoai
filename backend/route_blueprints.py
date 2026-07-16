@@ -25,6 +25,7 @@ def create_public_blueprint(views):
     """Create routes for health checks, WhatsApp, and USSD entry points."""
     bp = Blueprint("public", __name__)
     _add(bp, "/", "index", _view(views, "index"))
+    _add(bp, "/demo/provider", "demo_provider", _view(views, "demo_provider"))
     _add(bp, "/health", "health", _view(views, "health"), methods=["GET"])
     _add(bp, "/webhook", "webhook", _view(views, "webhook"), methods=["POST"])
     _add(bp, "/whatsapp", "webhook_whatsapp", _view(views, "webhook"), methods=["POST"])
