@@ -12,6 +12,7 @@ from routes import public as public_routes
 def _build_views() -> dict:
     return {
         "index": public_routes.index,
+        "demo_provider": public_routes.demo_provider,
         "health": public_routes.health,
         "webhook": public_routes.webhook,
         "ussd": public_routes.ussd,
