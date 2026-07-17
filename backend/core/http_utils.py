@@ -31,6 +31,14 @@ def client_phone_lookup_candidates(phone, *, country_hint: str | None = None) ->
     add(normalized)
     if normalized.startswith("+"):
         add(f"whatsapp:{normalized}")
+
+    # Build local variations (e.g., +254... -> 0...)
+    for cand in list(candidates):
+        if cand.startswith("+"):
+            for prefix in ["+254", "+256", "+255", "+234", "+250", "+252"]:
+                if cand.startswith(prefix):
+                    add("0" + cand[len(prefix):])
+
     return candidates
 
 

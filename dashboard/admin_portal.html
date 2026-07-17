@@ -8,9 +8,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
 </head>
 
 <body>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
     <div class="dash-layout">
         <aside class="dash-sidebar">
             <div class="sidebar-header">
@@ -18,20 +25,38 @@
                 <p class="sidebar-sub">Program analytics</p>
             </div>
             <nav class="sidebar-nav">
-                <a href="#" class="nav-item active" onclick="showSection('dashboard')">Overview</a>
-                <a href="#" class="nav-item" onclick="showSection('approvals')">Provider approvals <span id="nav-pending-badge" class="nav-badge" style="display:none">0</span></a>
+                <div class="sidebar-nav-group">
+                    <a href="#" class="nav-item active" onclick="showSection('dashboard')">Overview</a>
+                    <a href="#" class="nav-item" onclick="showSection('approvals')">Provider approvals <span id="nav-pending-badge" class="nav-badge" style="display:none">0</span></a>
+                </div>
+                <div class="sidebar-nav-group-bottom" style="margin-top: auto; padding: 0 0.5rem;">
+                    <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0; opacity: 0.2;">
+                    <a href="#" class="nav-item text-danger" onclick="window.location.href='/admin/logout'" style="gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                        Log Out
+                    </a>
+                </div>
             </nav>
         </aside>
 
         <main class="dash-main">
             <div class="topbar">
-                <div>
-                    <h2 class="topbar-title" id="topbar-title">Analytics overview</h2>
-                    <p class="topbar-meta" id="generated-at">Loading…</p>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <button class="btn btn-secondary mobile-menu-btn" onclick="toggleSidebar()">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                    </button>
+                    <div>
+                        <h2 class="topbar-title" id="topbar-title">Analytics overview</h2>
+                        <p class="topbar-meta" id="generated-at">Loading…</p>
+                    </div>
                 </div>
-                <div class="topbar-actions">
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="exportClientsCsv()">Export CSV</button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="window.location.href='/admin/logout'">Log out</button>
+                <div class="topbar-actions" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <button class="btn btn-secondary theme-toggle-btn" onclick="toggleTheme()" aria-label="Toggle dark mode" style="padding: 0.5rem; height: 38px; display: inline-flex; align-items: center; justify-content: center; width: 38px;">
+                        <!-- Sun Icon -->
+                        <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                        <!-- Moon Icon -->
+                        <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    </button>
                 </div>
             </div>
 
@@ -39,12 +64,18 @@
             <div id="dashboard-error" class="alert alert-error" style="display: none;"></div>
 
             <section id="dashboard" class="content-section dashboard-stack">
-                <div class="cohort-tabs" role="tablist">
-                    <button type="button" class="cohort-tab active" onclick="setCohort('all', this)">All</button>
-                    <button type="button" class="cohort-tab" onclick="setCohort('week', this)">This week</button>
-                    <button type="button" class="cohort-tab" onclick="setCohort('whatsapp', this)">WhatsApp</button>
-                    <button type="button" class="cohort-tab" onclick="setCohort('ussd', this)">USSD</button>
-                    <button type="button" class="cohort-tab" onclick="setCohort('provider', this)">Provider</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem;">
+                    <div class="cohort-tabs" role="tablist" style="margin-bottom: 0;">
+                        <button type="button" class="cohort-tab active" onclick="setCohort('all', this)">All</button>
+                        <button type="button" class="cohort-tab" onclick="setCohort('week', this)">This week</button>
+                        <button type="button" class="cohort-tab" onclick="setCohort('whatsapp', this)">WhatsApp</button>
+                        <button type="button" class="cohort-tab" onclick="setCohort('ussd', this)">USSD</button>
+                        <button type="button" class="cohort-tab" onclick="setCohort('provider', this)">Provider</button>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="exportClientsCsv()" style="display: inline-flex; align-items: center; gap: 6px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                        Export CSV
+                    </button>
                 </div>
 
                 <div id="kpi-strip" class="kpi-strip"></div>
@@ -95,18 +126,17 @@
                     <div id="method-bars" class="scroll-panel"></div>
                 </div>
 
-                <div class="admin-grid-2">
-                    <div class="panel">
-                        <h3 class="panel-title">Geography</h3>
-                        <p class="panel-subtitle">Analytics only — excluded from clinical engine</p>
-                        <div id="geo-table"></div>
-                        <p id="geo-footnote" class="table-footnote"></p>
-                    </div>
-                    <div class="panel panel-danger">
-                        <h3 class="panel-title">Safety inbox</h3>
-                        <p class="panel-subtitle">Side effects + pipeline failures</p>
-                        <div id="safety-table" class="scroll-panel"></div>
-                    </div>
+                <div class="panel" style="margin-bottom: 1.5rem;">
+                    <h3 class="panel-title">Geography</h3>
+                    <p class="panel-subtitle">Analytics only — excluded from clinical engine</p>
+                    <div id="geo-table" class="table-scroll"></div>
+                    <p id="geo-footnote" class="table-footnote"></p>
+                </div>
+
+                <div class="panel panel-danger" style="margin-bottom: 1.5rem;">
+                    <h3 class="panel-title">Safety inbox</h3>
+                    <p class="panel-subtitle">Side effects + pipeline failures</p>
+                    <div id="safety-table" class="scroll-panel table-scroll"></div>
                 </div>
 
                 <div class="panel">
@@ -149,8 +179,42 @@
         </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/dashboard-ui.js"></script>
     <script src="/static/js/admin-dashboard.js"></script>
+    <script>
+        function toggleSidebar() {
+            document.body.classList.toggle('sidebar-open');
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeToggleIcons();
+            if (typeof window.loadStats === 'function') {
+                window.loadStats();
+            }
+        }
+
+        function updateThemeToggleIcons() {
+            const theme = document.documentElement.getAttribute('data-theme') || 'light';
+            document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
+                const sun = btn.querySelector('.sun-icon');
+                const moon = btn.querySelector('.moon-icon');
+                if (theme === 'dark') {
+                    if (sun) sun.style.display = 'none';
+                    if (moon) moon.style.display = 'block';
+                } else {
+                    if (sun) sun.style.display = 'block';
+                    if (moon) moon.style.display = 'none';
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', updateThemeToggleIcons);
+    </script>
 </body>
 
 </html>

@@ -51,7 +51,26 @@ from whatsapp_helpers import send_long_whatsapp_message
 def process_webhook_background(incoming_msg, user_phone, to_number):
     try:
         incoming_msg = str(incoming_msg or '').strip()
-        user = get_user_state(user_phone)
+        raw_phone = str(user_phone or '').replace("whatsapp:", "").strip()
+        
+        db = get_db()
+        from core.http_utils import client_phone_lookup_candidates
+        resolved_doc_id = None
+        user = None
+        
+        for cand in client_phone_lookup_candidates(raw_phone):
+            doc = db.collection('contraceptive_users').document(cand).get()
+            if doc.exists:
+                resolved_doc_id = doc.id
+                user = doc.to_dict()
+                break
+                
+        if resolved_doc_id:
+            user_phone = resolved_doc_id
+        else:
+            user_phone = raw_phone
+            user = None
+
         if not user:
             # First interaction - Ask for Language
             # Webhook runs in a background thread (no Flask session); provider link is set via portal/triage.

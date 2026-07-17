@@ -14,6 +14,7 @@ class TestRouteBlueprints(unittest.TestCase):
         app = Flask(__name__)
         handler_names = [
             "index",
+            "demo_provider",
             "health",
             "webhook",
             "ussd",

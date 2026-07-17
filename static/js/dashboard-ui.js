@@ -2,6 +2,7 @@
  * Shared dashboard UI helpers (admin + provider portals).
  */
 (function (global) {
+  let trendChartInstance = null;
   function escapeHtml(value) {
     return String(value ?? '')
       .replace(/&/g, '&amp;')
@@ -24,7 +25,17 @@
 
   function showLoading(el, message) {
     if (!el) return;
-    el.innerHTML = `<div class="loading-state"><span class="spinner"></span>${escapeHtml(message || 'Loading…')}</div>`;
+    el.innerHTML = `
+      <div class="skeleton-row" style="opacity: 0.85;">
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton skeleton-text"></div>
+        <div class="skeleton skeleton-text short"></div>
+      </div>
+      <div class="skeleton-row" style="opacity: 0.6;">
+        <div class="skeleton skeleton-text"></div>
+        <div class="skeleton skeleton-text short"></div>
+      </div>
+    `;
   }
 
   function showError(el, message) {
@@ -73,9 +84,6 @@
     }
   }
 
-  /**
-   * 30-day registration trend as CSS column chart.
-   */
   function renderTrendChart(container, trend) {
     if (!container) return;
     const points = trend || [];
@@ -83,21 +91,60 @@
       showEmpty(container, 'No registrations in this period');
       return;
     }
-    const max = Math.max(...points.map((p) => p.count), 1);
-    container.innerHTML = '';
-    const wrap = document.createElement('div');
-    wrap.className = 'trend-chart';
-    points.forEach((p) => {
-      const h = Math.round((p.count / max) * 100);
-      const col = document.createElement('div');
-      col.className = 'trend-col';
-      col.title = `${p.date}: ${p.count}`;
-      col.innerHTML = `
-        <div class="trend-bar" style="height:${Math.max(h, 2)}%"></div>
-        <span class="trend-label">${escapeHtml(p.date.slice(5))}</span>`;
-      wrap.appendChild(col);
+    if (typeof Chart === 'undefined') {
+      container.innerHTML = '<p class="muted">Chart.js library is not available. Please check connection.</p>';
+      return;
+    }
+    
+    // Clear container and create canvas
+    container.innerHTML = '<canvas id="trendChartCanvas" style="max-height: 220px; width: 100%;"></canvas>';
+    const ctx = document.getElementById('trendChartCanvas').getContext('2d');
+    
+    const labels = points.map(p => p.date.slice(5));
+    const counts = points.map(p => p.count);
+    
+    if (trendChartInstance) {
+      trendChartInstance.destroy();
+    }
+    
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const gridColor = isDark ? '#334155' : '#e2e8f0';
+    const textColor = isDark ? '#94a3b8' : '#64748b';
+    const primaryColor = isDark ? '#60a5fa' : '#1e3a8a';
+    
+    trendChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Registrations',
+          data: counts,
+          borderColor: primaryColor,
+          backgroundColor: isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(30, 58, 138, 0.05)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          x: {
+            grid: { color: gridColor },
+            ticks: { color: textColor, font: { family: 'Inter' } }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: gridColor },
+            ticks: { color: textColor, stepSize: 1, font: { family: 'Inter' } }
+          }
+        }
+      }
     });
-    container.appendChild(wrap);
   }
 
   function renderSimpleTable(container, columns, rows, options) {
@@ -111,13 +158,13 @@
     const tbody = rows.map((row) => {
       const cells = columns.map((c) => {
         const raw = typeof c.render === 'function' ? c.render(row) : row[c.key];
-        return `<td>${typeof raw === 'string' && raw.includes('<') ? raw : escapeHtml(raw ?? '—')}</td>`;
+        return `<td data-label="${escapeHtml(c.label)}">${typeof raw === 'string' && (raw.includes('<') || raw.includes('&lt;')) ? raw : escapeHtml(raw ?? '—')}</td>`;
       }).join('');
       return `<tr${opts.rowAttrs ? opts.rowAttrs(row) : ''}>${cells}</tr>`;
     }).join('');
     container.innerHTML = `
       <div class="table-scroll">
-        <table class="data-table">
+        <table class="data-table ${opts.tableClass || ''}">
           <thead><tr>${thead}</tr></thead>
           <tbody>${tbody}</tbody>
         </table>

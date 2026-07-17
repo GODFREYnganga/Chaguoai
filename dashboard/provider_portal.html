@@ -25,7 +25,7 @@
 
         /* Method Card Styles */
         .method-card {
-            background: #fff;
+            background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 12px;
             margin-bottom: 1rem;
@@ -36,7 +36,7 @@
 
         .card-header {
             padding: 1rem;
-            background: #f8fafc;
+            background: var(--bg-color);
             border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
@@ -55,7 +55,7 @@
 
         .card-summary {
             font-size: 0.95rem;
-            color: var(--text);
+            color: var(--text-main);
             line-height: 1.5;
             margin-bottom: 0.5rem;
         }
@@ -63,12 +63,12 @@
         .card-details {
             display: none;
             padding: 1rem;
-            background: #f8fafc;
+            background: var(--bg-color);
             border-radius: 8px;
             font-size: 0.9rem;
             margin-top: 0.8rem;
             white-space: pre-wrap;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--border);
             line-height: 1.6;
         }
 
@@ -82,6 +82,12 @@
             margin-top: 0.5rem;
         }
     </style>
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
 </head>
 
 <body>
@@ -105,7 +111,14 @@
                     </button>
                     <h2 id="view-title">Dashboard</h2>
                 </div>
-                <button class="btn btn-secondary" onclick="logout()">Log Out</button>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button class="btn btn-secondary theme-toggle-btn" onclick="toggleTheme()" aria-label="Toggle dark mode" style="padding: 0.5rem; height: 38px; display: inline-flex; align-items: center; justify-content: center; width: 38px;">
+                        <!-- Sun Icon -->
+                        <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                        <!-- Moon Icon -->
+                        <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    </button>
+                </div>
             </div>
 
             <!-- Role: CHW - Client Roster -->
@@ -128,7 +141,7 @@
                 </div>
                 <div class="panel" style="padding:0;">
                     <div id="roster-table-wrap" class="table-scroll">
-                        <table class="data-table">
+                        <table class="data-table table-no-cards">
                             <thead>
                                 <tr>
                                     <th>Client</th>
@@ -199,7 +212,7 @@
                     </div>
                     <button class="btn btn-primary" onclick="askCHWQuestion()" id="btn-qa">Ask AI Assistant</button>
                     <div id="chw-qa-result"
-                        style="margin-top: 2rem; display: none; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: #f8fafc;">
+                        style="margin-top: 2rem; display: none; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text-main);">
                         <!-- Injected -->
                     </div>
                 </div>
@@ -221,14 +234,16 @@
 
                     <div id="triage-form-container">
                         <div
-                            style="background: #f1f5f9; padding: 1.5rem; border-radius: var(--radius); margin-bottom: 1rem; position: relative;">
-                            <button class="btn btn-secondary"
-                                style="position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.7rem; padding: 0.2rem 0.5rem;"
-                                onclick="speakQuestion()">🔊 Speak</button>
-                            <span id="triage-step-display"
-                                style="font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.5rem;">Step
-                                1 of 13</span>
-                            <h4 id="triage-prompt" style="margin: 0; line-height: 1.4;">...</h4>
+                            style="background: var(--surface); border: 1px solid var(--border); padding: 1.5rem; border-radius: var(--radius); margin-bottom: 1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                <span id="triage-step-display"
+                                    style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Step 1 of 13</span>
+                                <button class="btn btn-secondary btn-sm" onclick="speakQuestion()" style="font-size: 0.75rem; padding: 0.25rem 0.6rem; display: inline-flex; align-items: center; gap: 4px;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                                    Speak
+                                </button>
+                            </div>
+                            <h4 id="triage-prompt" style="margin: 0; line-height: 1.4; color: var(--text-main);">...</h4>
                         </div>
 
                         <div id="triage-input-container" class="form-group">
@@ -263,7 +278,7 @@
                     </div>
                     <button class="btn btn-primary" onclick="queryMEC()" id="btn-mec">Analyze Guidelines</button>
                     <div id="mec-result"
-                        style="margin-top: 2rem; display: none; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: #f8fafc;">
+                        style="margin-top: 2rem; display: none; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text-main);">
                     </div>
                 </div>
             </section>
@@ -453,18 +468,32 @@
 
         function setupSidebar() {
             const nav = document.getElementById('sidebar-nav');
+            const logoutHtml = `
+                <div class="sidebar-nav-group-bottom" style="margin-top: auto; padding: 0 0.5rem; width: 100%;">
+                    <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0; opacity: 0.2;">
+                    <a href="#" class="nav-item text-danger" onclick="logout()" style="gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                        Log Out
+                    </a>
+                </div>`;
             if (currentProvider.role === 'chw') {
                 nav.innerHTML = `
-                    <a href="#" class="nav-item active" onclick="showSection('chw-roster')">My Clients</a>
-                    <a href="#" class="nav-item" onclick="showSection('chw-triage')">Method Match</a>
-                    <a href="#" class="nav-item" onclick="showSection('chw-followups')">Follow-ups</a>
-                    <a href="#" class="nav-item" onclick="showSection('chw-side-effects')">Side Effects</a>
-                    <a href="#" class="nav-item" onclick="showSection('chw-qa')">General Q&A</a>
+                    <div class="sidebar-nav-group" style="width: 100%;">
+                        <a href="#" class="nav-item active" onclick="showSection('chw-roster')">My Clients</a>
+                        <a href="#" class="nav-item" onclick="showSection('chw-triage')">Method Match</a>
+                        <a href="#" class="nav-item" onclick="showSection('chw-followups')">Follow-ups</a>
+                        <a href="#" class="nav-item" onclick="showSection('chw-side-effects')">Side Effects</a>
+                        <a href="#" class="nav-item" onclick="showSection('chw-qa')">General Q&A</a>
+                    </div>
+                    ${logoutHtml}
                 `;
             } else {
                 nav.innerHTML = `
-                    <a href="#" class="nav-item active" onclick="showSection('clinician-mec')">MEC Analyzer</a>
-                    <a href="#" class="nav-item" onclick="showSection('clinician-review')">Clinician Review</a>
+                    <div class="sidebar-nav-group" style="width: 100%;">
+                        <a href="#" class="nav-item active" onclick="showSection('clinician-mec')">MEC Analyzer</a>
+                        <a href="#" class="nav-item" onclick="showSection('clinician-review')">Clinician Review</a>
+                    </div>
+                    ${logoutHtml}
                 `;
             }
         }
@@ -949,6 +978,46 @@
             } catch (e) { document.getElementById('triage-final-result').innerHTML = '<div class="alert alert-error">Error generating clinical result. Data saved.</div>'; }
         }
 
+        function formatQAAnswer(text) {
+            if (!text) return '<p style="color:var(--text-muted);">No guidance available.</p>';
+            let cleaned = text.replace(/\[\/?METHOD_CARD\]/gi, '');
+            let lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
+            let html = '';
+            let inList = false;
+
+            lines.forEach(line => {
+                let formatted = line
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+                const fieldMatch = formatted.match(/^(NAME|CATEGORY|SUMMARY|WHY_IT_FITS|HOW_IT_WORKS|HOW_TO_USE|COMMON_SIDE_EFFECTS|DURATION_OR_REVISIT|REFERRAL_REQUIRED|REFERRAL_REASON|FOLLOW_UP_SCHEDULE|CITATIONS):\s*(.*)$/i);
+                if (fieldMatch) {
+                    const fieldName = fieldMatch[1].replace(/_/g, ' ');
+                    const formattedField = fieldName.charAt(0).toUpperCase() + fieldName.slice(1).toLowerCase();
+                    formatted = `<strong>${formattedField}:</strong> ${fieldMatch[2]}`;
+                }
+
+                if (formatted.startsWith('- ') || formatted.startsWith('* ')) {
+                    if (!inList) {
+                        html += '<ul style="margin-bottom: 0.8rem; padding-left: 1.25rem; color: var(--text-main);">';
+                        inList = true;
+                    }
+                    html += `<li style="margin-bottom: 0.4rem; line-height: 1.5;">${formatted.substring(2)}</li>`;
+                } else {
+                    if (inList) {
+                        html += '</ul>';
+                        inList = false;
+                    }
+                    html += `<p style="margin-bottom: 0.8rem; line-height: 1.5; color: var(--text-main);">${formatted}</p>`;
+                }
+            });
+
+            if (inList) {
+                html += '</ul>';
+            }
+            return html;
+        }
+
         async function askCHWQuestion() {
             const q = document.getElementById('chw-qa-input').value;
             if (!q) return;
@@ -964,7 +1033,7 @@
                 resBox.style.display = 'block';
 
                 const rawRec = data.response || "";
-                resBox.innerHTML = `<strong>Clinical Guidance Areas:</strong><div style="margin-top:0.5rem; color: var(--text); line-height:1.5;">${parseClinicalOutcome(rawRec)}</div>`;
+                resBox.innerHTML = `<strong>Clinical Guidance:</strong><div style="margin-top:0.8rem;">${formatQAAnswer(rawRec)}</div>`;
             } catch (e) { alert("Error connecting to clinical assistant."); }
             finally { btn.disabled = false; btn.textContent = 'Ask AI Assistant'; }
         }
@@ -1078,10 +1147,10 @@
                     <h4 style="margin:1rem 0 0.5rem;">Client Journey Timeline</h4>
                     ${timelineHtml}
                     <details style="margin-top:1rem;"><summary class="muted" style="cursor:pointer;">Audit trail</summary>${auditHtml}</details>
-                    ${data.mec_summary ? `<h4 style="margin:1rem 0 0.5rem;">MEC summary</h4><pre style="font-size:0.75rem;white-space:pre-wrap;background:#f8fafc;padding:0.75rem;border-radius:8px;">${UI.escapeHtml(data.mec_summary)}</pre>` : ''}
+                    ${data.mec_summary ? `<h4 style="margin:1rem 0 0.5rem;">MEC summary</h4><pre style="font-size:0.75rem;white-space:pre-wrap;background:var(--bg-color);color:var(--text-main);border:1px solid var(--border);padding:0.75rem;border-radius:8px;">${UI.escapeHtml(data.mec_summary)}</pre>` : ''}
                     <h4 style="margin:1rem 0 0.5rem;">Side effects</h4>
                     ${(data.side_effects && data.side_effects.length) ? data.side_effects.map((s) =>
-                        `<div style="margin-bottom:0.5rem;padding:0.5rem;background:#fff7ed;border-radius:6px;font-size:0.85rem;">
+                        `<div class="side-effects-box" style="margin-top:0;margin-bottom:0.5rem;padding:0.5rem;font-size:0.85rem;">
                             <small class="muted">${UI.formatDate(s.at)}</small><br>${UI.escapeHtml(s.report || '')}
                         </div>`).join('') : '<p class="muted">No reports filed.</p>'}`;
             } catch (e) {
@@ -1106,7 +1175,7 @@
                     { key: 'phone', label: 'Client' },
                     { key: 'at', label: 'When', render: (r) => UI.formatDate(r.at) },
                     { key: 'report', label: 'Report', render: (r) => UI.escapeHtml((r.report || '').slice(0, 200)) },
-                ], data.reports || [], { emptyMessage: 'No side effect reports from your clients.' });
+                ], data.reports || [], { emptyMessage: 'No side effect reports from your clients.', tableClass: 'table-no-cards' });
                 el.querySelectorAll('tbody tr').forEach((row, i) => {
                     const r = (data.reports || [])[i];
                     if (r && r.phone) {
@@ -1315,30 +1384,61 @@
                     { key: 'reason', label: 'Reason' },
                     { key: 'status', label: 'Status', render: (r) => UI.statusPill(r.status) },
                     { key: 'action', label: 'Action', render: (r) => `<button class="btn btn-secondary btn-sm" onclick="recordFollowupOutcome('${UI.escapeHtml(r.id)}')">Record</button>` },
-                ], tasks, { emptyMessage: 'No task lines.' });
+                ], tasks, { emptyMessage: 'No task lines.', tableClass: 'table-no-cards' });
             } catch (e) {
                 if (listEl) UI.showError(listEl, e.message);
             }
         }
 
-        async function recordFollowupOutcome(taskId) {
-            const outcome = prompt('Outcome type: continuing, switched, stopped, pregnancy_reported, referred, lost_to_followup');
-            if (!outcome) return;
-            const selectedMethod = prompt('Selected/current method (optional):') || '';
-            const switchedTo = outcome === 'switched' ? (prompt('Switched to which method?') || '') : '';
-            const sideEffects = prompt('Side effects reported (comma separated, optional):') || '';
-            const pregnancyStatus = prompt('Pregnancy status: not_pregnant, possible, confirmed, unknown', 'unknown') || 'unknown';
-            const continuationStatus = prompt('Continuation status: continuing, switched, stopped, referred, lost_to_followup', outcome === 'continuing' ? 'continuing' : outcome) || outcome;
-            const note = prompt('Short clinical note (optional):') || '';
+        function recordFollowupOutcome(taskId) {
+            openOutcomeModal(taskId);
+        }
+
+        function openOutcomeModal(taskId) {
+            document.getElementById('outcome-task-id').value = taskId;
+            document.getElementById('outcome-form').reset();
+            toggleOutcomeFields();
+            document.getElementById('outcome-modal').style.display = 'flex';
+        }
+
+        function closeOutcomeModal() {
+            document.getElementById('outcome-modal').style.display = 'none';
+        }
+
+        function toggleOutcomeFields() {
+            const outcome = document.getElementById('outcome-type').value;
+            const switchedGroup = document.getElementById('group-switched-to');
+            if (outcome === 'switched') {
+                switchedGroup.style.display = 'block';
+            } else {
+                switchedGroup.style.display = 'none';
+            }
+        }
+
+        async function submitFollowupOutcome(event) {
+            event.preventDefault();
+            const taskId = document.getElementById('outcome-task-id').value;
+            const outcome = document.getElementById('outcome-type').value;
+            const selectedMethod = document.getElementById('outcome-selected-method').value;
+            const switchedTo = document.getElementById('outcome-switched-to').value;
+            const sideEffects = document.getElementById('outcome-side-effects').value;
+            const pregnancyStatus = document.getElementById('outcome-pregnancy').value;
+            const note = document.getElementById('outcome-notes').value;
+
             const structured_outcome = {
                 outcome_type: outcome,
                 selected_method: selectedMethod,
                 switched_to_method: switchedTo,
                 side_effects: sideEffects.split(',').map((s) => s.trim()).filter(Boolean),
                 pregnancy_status: pregnancyStatus,
-                continuation_status: continuationStatus,
+                continuation_status: outcome === 'continuing' ? 'continuing' : outcome,
                 notes: note,
             };
+
+            const btn = event.target.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
             try {
                 const res = await apiFetch(`/api/provider/followups/${encodeURIComponent(taskId)}/outcome`, {
                     method: 'POST',
@@ -1347,9 +1447,13 @@
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Could not record outcome');
+                closeOutcomeModal();
                 loadFollowups();
             } catch (e) {
                 alert(e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Outcome';
             }
         }
 
@@ -1397,8 +1501,93 @@
 
         async function logout() { await apiFetch('/api/provider/logout', { method: 'POST' }); window.location.href = '/provider/login'; }
 
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeToggleIcons();
+        }
+
+        function updateThemeToggleIcons() {
+            const theme = document.documentElement.getAttribute('data-theme') || 'light';
+            document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
+                const sun = btn.querySelector('.sun-icon');
+                const moon = btn.querySelector('.moon-icon');
+                if (theme === 'dark') {
+                    if (sun) sun.style.display = 'none';
+                    if (moon) moon.style.display = 'block';
+                } else {
+                    if (sun) sun.style.display = 'block';
+                    if (moon) moon.style.display = 'none';
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', updateThemeToggleIcons);
+
         init();
     </script>
+    <!-- Follow-up Outcome Modal Overlay -->
+    <div id="outcome-modal" class="modal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 2000; align-items: center; justify-content: center; padding: 1.5rem; backdrop-filter: blur(4px);">
+        <div class="card" style="max-width: 500px; width: 100%; padding: 2rem; box-shadow: var(--shadow-md); border: 1px solid var(--border); background: var(--surface);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h3 style="margin: 0; font-size: 1.25rem; color: var(--text-main);">Record Follow-up Outcome</h3>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="closeOutcomeModal()" style="padding: 0.25rem 0.5rem; cursor: pointer; border: none; background: transparent; font-size: 1.1rem; color: var(--text-muted);">✕</button>
+            </div>
+            <form id="outcome-form" onsubmit="submitFollowupOutcome(event)">
+                <input type="hidden" id="outcome-task-id">
+                
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="outcome-type" style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem; color: var(--text-muted);">Outcome Type</label>
+                    <select id="outcome-type" class="input" onchange="toggleOutcomeFields()" required style="width: 100%;">
+                        <option value="">Select outcome...</option>
+                        <option value="continuing">Continuing method</option>
+                        <option value="switched">Switched method</option>
+                        <option value="stopped">Stopped method</option>
+                        <option value="referred">Referred client</option>
+                        <option value="pregnancy_reported">Pregnancy reported</option>
+                        <option value="lost_to_followup">Lost to follow-up</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="group-selected-method" style="margin-bottom: 1rem;">
+                    <label for="outcome-selected-method" style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem; color: var(--text-muted);">Current / Primary Method</label>
+                    <input type="text" id="outcome-selected-method" class="input" placeholder="e.g. Implant (LNG)" style="width: 100%;">
+                </div>
+
+                <div class="form-group" id="group-switched-to" style="display: none; margin-bottom: 1rem;">
+                    <label for="outcome-switched-to" style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem; color: var(--text-muted);">Switched To Method</label>
+                    <input type="text" id="outcome-switched-to" class="input" placeholder="e.g. Pill (Combined)" style="width: 100%;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="outcome-side-effects" style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem; color: var(--text-muted);">Side Effects Reported (comma separated)</label>
+                    <input type="text" id="outcome-side-effects" class="input" placeholder="e.g. headache, irregular bleeding" style="width: 100%;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="outcome-pregnancy" style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem; color: var(--text-muted);">Pregnancy Status</label>
+                    <select id="outcome-pregnancy" class="input" style="width: 100%;">
+                        <option value="unknown">Unknown</option>
+                        <option value="not_pregnant">Not Pregnant</option>
+                        <option value="possible">Possible Pregnancy</option>
+                        <option value="confirmed">Confirmed Pregnancy</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label for="outcome-notes" style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem; color: var(--text-muted);">Follow-up Notes / Reason</label>
+                    <textarea id="outcome-notes" class="input" rows="3" placeholder="Enter clinical observations..." style="width: 100%; resize: vertical;"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeOutcomeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="flex: 2;">Save Outcome</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </body>
 
 </html>

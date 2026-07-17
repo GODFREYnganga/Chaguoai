@@ -35,6 +35,12 @@ class TestPhoneNormalization(unittest.TestCase):
         self.assertIn("+254757671920", candidates)
         self.assertIn("whatsapp:+254757671920", candidates)
 
+    def test_client_phone_lookup_candidates_from_whatsapp_alias(self):
+        candidates = client_phone_lookup_candidates("whatsapp:+254757671920")
+        self.assertIn("whatsapp:+254757671920", candidates)
+        self.assertIn("+254757671920", candidates)
+        self.assertIn("0757671920", candidates)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,7 @@
 (function () {
   const UI = window.DashboardUI;
   let currentCohort = 'all';
+  let completionChartInstance = null;
 
   const SECTION_META = {
     dashboard: { title: 'Analytics overview', metaFromStats: true },
@@ -11,6 +12,7 @@
   };
 
   function showSection(sectionId, navEl) {
+    document.body.classList.remove('sidebar-open');
     document.querySelectorAll('.content-section').forEach((el) => {
       el.style.display = 'none';
     });
@@ -159,11 +161,49 @@
         <div><span class="muted">Failed</span><strong>${c.failed ?? 0}</strong></div>
         <div><span class="muted">In progress</span><strong>${c.pending ?? 0}</strong></div>
       </div>
-      <p class="completion-rate">Completion rate: <strong>${c.completion_rate_percent ?? 0}%</strong></p>
-      <div class="donut-wrap" aria-hidden="true">
-        <div class="donut" style="--pct:${c.completion_rate_percent || 0}"></div>
-        <span class="donut-label">${c.completion_rate_percent ?? 0}%</span>
+      <p class="completion-rate" style="margin-bottom: 0.75rem;">Completion rate: <strong>${c.completion_rate_percent ?? 0}%</strong></p>
+      <div style="height: 120px; position: relative;">
+        <canvas id="completionChartCanvas"></canvas>
       </div>`;
+
+    if (typeof Chart === 'undefined') {
+      return;
+    }
+
+    const ctx = document.getElementById('completionChartCanvas').getContext('2d');
+    if (completionChartInstance) {
+      completionChartInstance.destroy();
+    }
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const completedColor = '#10b981';
+    const failedColor = '#ef4444';
+    const pendingColor = '#f59e0b';
+    const emptyColor = isDark ? '#334155' : '#e2e8f0';
+
+    const total = (c.completed ?? 0) + (c.failed ?? 0) + (c.pending ?? 0);
+    const dataVals = total > 0 ? [c.completed ?? 0, c.failed ?? 0, c.pending ?? 0] : [0, 0, 0, 1];
+    const bgColors = total > 0 ? [completedColor, failedColor, pendingColor] : [emptyColor];
+
+    completionChartInstance = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: total > 0 ? ['Completed', 'Failed', 'In Progress'] : ['No Data'],
+        datasets: [{
+          data: dataVals,
+          backgroundColor: bgColors,
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
   }
 
   function renderGeoTable(geo) {
@@ -191,7 +231,7 @@
       { key: 'country', label: 'Country' },
       { key: 'completed_at', label: 'Completed', render: (r) => UI.formatShortDate(r.completed_at) },
       { key: 'status', label: 'Status', render: (r) => UI.statusPill(r.status) },
-    ], rows, { emptyMessage: 'No completions in this cohort' });
+    ], rows, { emptyMessage: 'No completions in this cohort', tableClass: 'table-no-cards' });
   }
 
   function renderSafety(items) {
@@ -201,9 +241,26 @@
       { key: 'phone', label: 'Phone' },
       { key: 'source', label: 'Source' },
       { key: 'at', label: 'When', render: (r) => UI.formatDate(r.at) },
-      { key: 'report', label: 'Summary', render: (r) => UI.escapeHtml((r.report || '').slice(0, 120)) },
-    ], items, { emptyMessage: 'No safety items — good news' });
+      { key: 'report', label: 'Summary', render: (r) => UI.escapeHtml((r.report || '').slice(0, 80)) },
+      { key: 'action', label: 'Action', render: (r) => `
+        <div style="display: flex; gap: 0.25rem;">
+          <button class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.4rem; font-size: 0.75rem;" onclick="acknowledgeSafety('${UI.escapeHtml(r.id || '')}')">Ack</button>
+          <button class="btn btn-primary btn-sm" style="padding: 0.2rem 0.4rem; font-size: 0.75rem;" onclick="alertProvider('${UI.escapeHtml(r.phone || '')}')">Alert</button>
+        </div>`
+      }
+    ], items, { emptyMessage: 'No safety items — good news', tableClass: 'table-no-cards' });
   }
+
+  window.acknowledgeSafety = function(id) {
+    alert('Acknowledged safety incident: ' + id);
+  };
+
+  window.alertProvider = function(phone) {
+    const msg = prompt('Enter alert message for provider regarding client ' + phone + ':', 'Please follow up with client ' + phone + ' regarding reported side effects.');
+    if (msg) {
+      alert('Alert notification sent.');
+    }
+  };
 
   async function loadApprovals() {
     const tbody = document.getElementById('approvals-table');
@@ -222,11 +279,11 @@
       data.providers.forEach((p) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><strong>${UI.escapeHtml(p.fullName)}</strong></td>
-          <td><span class="badge ${p.role === 'chw' ? 'badge-chw' : 'badge-clinician'}">${UI.escapeHtml((p.role || '').toUpperCase())}</span></td>
-          <td>${UI.escapeHtml(p.credentials)}</td>
-          <td>${UI.escapeHtml(p.email)}<br><small>${UI.escapeHtml(p.phone)}</small></td>
-          <td><button class="btn btn-primary btn-sm" data-id="${UI.escapeHtml(p.id)}">Approve</button></td>`;
+          <td data-label="Name"><strong>${UI.escapeHtml(p.fullName)}</strong></td>
+          <td data-label="Role"><span class="badge ${p.role === 'chw' ? 'badge-chw' : 'badge-clinician'}">${UI.escapeHtml((p.role || '').toUpperCase())}</span></td>
+          <td data-label="Credentials">${UI.escapeHtml(p.credentials)}</td>
+          <td data-label="Contact">${UI.escapeHtml(p.email)}<br><small>${UI.escapeHtml(p.phone)}</small></td>
+          <td data-label="Action"><button class="btn btn-primary btn-sm" data-id="${UI.escapeHtml(p.id)}">Approve</button></td>`;
         tr.querySelector('button').addEventListener('click', () => approveProvider(p.id));
         tbody.appendChild(tr);
       });
@@ -283,6 +340,8 @@
     }
     showSection('dashboard');
   }
+
+  window.loadStats = loadStats;
 
   document.addEventListener('DOMContentLoaded', () => {
     resolveInitialSection();

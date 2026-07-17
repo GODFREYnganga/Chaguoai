@@ -127,11 +127,12 @@ body.sidebar-open .sidebar-overlay {
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   padding: 1.25rem;
+  min-width: 0;
 }
 
 .panel-danger {
-  border-color: #fecaca;
-  background: #fffbfb;
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.02);
 }
 
 .panel-header {
@@ -552,6 +553,22 @@ body.sidebar-open .sidebar-overlay {
     flex-direction: column;
   }
   
+  .topbar {
+    align-items: center;
+    margin-bottom: 1.25rem;
+    gap: 0.5rem;
+  }
+  
+  .topbar-title {
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+  
+  .topbar-meta {
+    font-size: 0.75rem;
+    margin-top: 0.15rem;
+  }
+  
   .mobile-menu-btn {
     display: inline-flex;
     align-items: center;
@@ -637,6 +654,36 @@ body.sidebar-open .sidebar-overlay {
     text-transform: uppercase;
   }
 
+  /* Overrides to prevent card conversion on specific high-density tables */
+  .data-table.table-no-cards {
+    display: table !important;
+  }
+  .data-table.table-no-cards thead {
+    display: table-header-group !important;
+  }
+  .data-table.table-no-cards tbody {
+    display: table-row-group !important;
+  }
+  .data-table.table-no-cards tr {
+    display: table-row !important;
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    box-shadow: none !important;
+  }
+  .data-table.table-no-cards td {
+    display: table-cell !important;
+    width: auto !important;
+    text-align: left !important;
+    padding: 0.65rem 0.75rem !important;
+    border-bottom: 1px solid var(--border) !important;
+    position: static !important;
+  }
+  .data-table.table-no-cards td::before {
+    display: none !important;
+  }
+
   .dash-main {
     padding: 1rem;
   }
@@ -661,4 +708,11 @@ body.sidebar-open .sidebar-overlay {
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.82em;
+}
+
+/* Dark mode override for side effects container */
+[data-theme="dark"] .side-effects-box {
+  background: rgba(254, 215, 170, 0.1) !important;
+  border-color: rgba(254, 215, 170, 0.2) !important;
+  color: #fdba74 !important;
 }
