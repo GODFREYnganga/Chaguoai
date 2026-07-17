@@ -85,7 +85,7 @@
 </head>
 
 <body>
-
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
     <div class="dash-layout">
         <aside class="dash-sidebar">
             <div class="sidebar-header">
@@ -99,7 +99,12 @@
 
         <main class="dash-main">
             <div class="topbar">
-                <h2 id="view-title">Dashboard</h2>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <button class="btn btn-secondary mobile-menu-btn" onclick="toggleSidebar()">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                    </button>
+                    <h2 id="view-title">Dashboard</h2>
+                </div>
                 <button class="btn btn-secondary" onclick="logout()">Log Out</button>
             </div>
 
@@ -474,9 +479,14 @@
             'clinician-review': 'Clinician Review',
         };
 
+        function toggleSidebar() {
+            document.body.classList.toggle('sidebar-open');
+        }
+
         function showSection(sectionId) {
             document.querySelectorAll('.content-section').forEach(s => s.style.display = 'none');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.body.classList.remove('sidebar-open');
             const target = document.getElementById('view-' + sectionId);
             if (target) target.style.display = 'block';
             if (typeof event !== 'undefined' && event.currentTarget && event.currentTarget.classList) {
@@ -1010,17 +1020,24 @@
                 tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No clients match your filters.</td></tr>';
                 return;
             }
-            filtered.forEach((c) => {
+            const MAX_RESULTS = 50;
+            if (filtered.length > MAX_RESULTS) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="5" class="text-center muted">Showing first ${MAX_RESULTS} of ${filtered.length} matching clients. Use search to find others.</td>`;
+                tbody.appendChild(tr);
+            }
+            
+            filtered.slice(0, MAX_RESULTS).forEach((c) => {
                 const tr = document.createElement('tr');
                 tr.className = 'row-clickable';
                 tr.onclick = () => openClientDrawer(c.id);
                 const registered = c.registered_at ? new Date(c.registered_at).toLocaleDateString() : '—';
                 tr.innerHTML = `
-                    <td><strong>${UI.escapeHtml(c.name || 'Anonymous')}</strong></td>
-                    <td class="mono">${UI.escapeHtml(c.id)}</td>
-                    <td>${registered}</td>
-                    <td>${UI.escapeHtml(c.method_category_primary || c.method_snippet || '—')}</td>
-                    <td>${UI.statusPill(c.match_status || 'in_progress')}</td>`;
+                    <td data-label="Client"><strong>${UI.escapeHtml(c.name || 'Anonymous')}</strong></td>
+                    <td data-label="Phone" class="mono">${UI.escapeHtml(c.id)}</td>
+                    <td data-label="Registered">${registered}</td>
+                    <td data-label="Method">${UI.escapeHtml(c.method_category_primary || c.method_snippet || '—')}</td>
+                    <td data-label="Status">${UI.statusPill(c.match_status || 'in_progress')}</td>`;
                 tbody.appendChild(tr);
             });
         }

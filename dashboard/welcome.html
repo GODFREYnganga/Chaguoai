@@ -87,19 +87,36 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        
         .logo {
-            width: 60px;
-            height: 60px;
+            width: 100px;
+            height: 100px;
             background: linear-gradient(135deg, #8b5cf6, #3b82f6);
-            border-radius: 16px;
+            border-radius: 6px;
             margin: 0 auto 1.5rem;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
-            font-weight: 800;
-            color: white;
             box-shadow: 0 10px 25px rgba(139, 92, 246, 0.4);
+            
+            /* Prevents any image overflow from breaking the rounded corners */
+            overflow: hidden; 
+        }
+
+        .logo img {
+            /* Scale the image to fit the container */
+            width: 100%;
+            height: 100%;
+            
+            /* Cover keeps the aspect ratio while filling the box. 
+            If your logo has a transparent background and needs to fit entirely 
+            without cropping, use 'contain' instead of 'cover'. */
+            object-fit: contain; 
+            
+            /* Optional: If your logo is a transparent PNG/SVG and needs a little breathing room 
+            so it doesn't touch the borders of the gradient box */
+            padding: 5PX;
+            box-sizing: border-box;
         }
 
         h1 {
@@ -179,9 +196,11 @@
     <div class="orb orb-2"></div>
     
     <div class="container">
-        <div class="logo">C</div>
+        <div class="logo">
+            <img src="../static/images/ChaguoAI-logo.png" alt="ChaguoAI Logo">
+        </div>
         <h1>ChaguoAI</h1>
-        <p>Experience the future of healthcare management.</p>
+        <p>Empowering safe, informed contraceptive choice in Sub-Saharan Africa.</p>
         
         <a href="/demo/provider" class="demo-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
