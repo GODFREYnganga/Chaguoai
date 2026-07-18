@@ -64,10 +64,19 @@ def send_due_followups(*, db=None, now: datetime | None = None, limit: int = 100
         query = (
             db.collection("followup_tasks")
             .where(filter=firestore.FieldFilter("status", "==", status_to_send))
-            .order_by("due_at")
             .limit(query_limit)
         )
-        for snap in query.stream():
+        snaps = list(query.stream())
+
+        def _get_due_at(s):
+            val = (s.to_dict() or {}).get("due_at")
+            if isinstance(val, datetime):
+                return val.astimezone(timezone.utc)
+            return datetime.max.replace(tzinfo=timezone.utc)
+
+        snaps.sort(key=_get_due_at)
+
+        for snap in snaps:
             if sent + skipped + failed >= limit:
                 break
             task = snap.to_dict() or {}
@@ -137,9 +146,22 @@ def escalate_no_responses(*, db=None, now: datetime | None = None, limit: int = 
     now = now or utc_now()
     escalated = 0
 
-    for snap in db.collection("followup_tasks").where(
-        filter=firestore.FieldFilter("status", "==", "sent")
-    ).order_by("response_due_at").limit(max(limit * FOLLOWUP_QUERY_MULTIPLIER, limit)).stream():
+    query = (
+        db.collection("followup_tasks")
+        .where(filter=firestore.FieldFilter("status", "==", "sent"))
+        .limit(max(limit * FOLLOWUP_QUERY_MULTIPLIER, limit))
+    )
+    snaps = list(query.stream())
+
+    def _get_resp_due(s):
+        val = (s.to_dict() or {}).get("response_due_at")
+        if isinstance(val, datetime):
+            return val.astimezone(timezone.utc)
+        return datetime.max.replace(tzinfo=timezone.utc)
+
+    snaps.sort(key=_get_resp_due)
+
+    for snap in snaps:
         if escalated >= limit:
             break
         task = snap.to_dict() or {}

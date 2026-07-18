@@ -56,6 +56,10 @@ class TestRouteBlueprints(unittest.TestCase):
             "api_provider_mec_query",
             "api_provider_submit_triage",
             "api_provider_triage_result",
+            "api_admin_send_notification",
+            "api_admin_alert_client_provider",
+            "api_provider_notifications",
+            "api_provider_mark_notification_read",
         ]
         register_blueprints(app, {name: _handler for name in handler_names})
 

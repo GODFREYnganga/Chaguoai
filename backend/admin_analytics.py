@@ -214,9 +214,23 @@ def collect_safety_items(db, *, provider_id: Optional[str] = None, limit: int = 
             if assigned_phones is not None and phone not in assigned_phones:
                 continue
             payload = doc.to_dict() or {}
+            
+            client_name = ""
+            client_method = ""
+            try:
+                client_snap = db.collection("contraceptive_users").document(phone).get()
+                if client_snap.exists:
+                    c_data = client_snap.to_dict() or {}
+                    client_name = c_data.get("name") or ""
+                    client_method = c_data.get("selected_method") or c_data.get("matched_method") or ""
+            except Exception:
+                pass
+
             items.append({
                 "type": "side_effect",
                 "phone": phone,
+                "client_name": client_name,
+                "client_method": client_method,
                 "report": (payload.get("report") or "")[:500],
                 "source": payload.get("source") or infer_channel({}),
                 "language": payload.get("language") or "",

@@ -9,6 +9,13 @@ from typing import Any
 from method_library import get_method_info
 
 
+def _get_greeting(client_name: str) -> str:
+    name = (client_name or "").strip()
+    if not name or name.startswith("+") or name.startswith("0") or name.lower() == "friend":
+        return "Habari,"
+    return f"Habari {name},"
+
+
 def compose_selection_message(
     *,
     client_name: str = "",
@@ -17,7 +24,7 @@ def compose_selection_message(
     next_followup: Any = None,
 ) -> str:
     info = get_method_info(method_name)
-    greeting = f"Habari {client_name}," if client_name else "Habari,"
+    greeting = _get_greeting(client_name)
     lines = [
         greeting,
         f"You and your CHW selected: {info['display_name']}.",
@@ -52,7 +59,7 @@ def compose_selection_message(
 
 def compose_followup_reminder(*, client_name: str = "", method_name: str, reason: str) -> str:
     info = get_method_info(method_name)
-    greeting = f"Habari {client_name}," if client_name else "Habari,"
+    greeting = _get_greeting(client_name)
     return (
         f"{greeting}\n\n"
         f"This is your ChaguoAI follow-up for {info['display_name']}.\n"

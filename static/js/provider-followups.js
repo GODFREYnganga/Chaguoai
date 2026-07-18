@@ -40,8 +40,8 @@
         return groups.map((g) => `
             <div class="followup-client-row" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0.75rem 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
                 <div>
-                    <strong>${esc(g.name)}</strong>
-                    <div class="muted mono" style="font-size:0.8rem;">${esc(g.phone)}</div>
+                    <strong>${esc(window.DashboardUI?.maskName(g.name))}</strong>
+                    <div class="muted mono" style="font-size:0.8rem;">${esc(window.DashboardUI?.maskPhone(g.phone))}</div>
                     <div class="muted" style="font-size:0.8rem;">${esc(g.method || '-')} · ${g.due} due · ${g.awaiting} awaiting · ${g.attention} needs CHW</div>
                 </div>
                 <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">

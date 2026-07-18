@@ -225,7 +225,7 @@
   function renderCompletions(rows) {
     const el = document.getElementById('completions-table');
     UI.renderSimpleTable(el, [
-      { key: 'name', label: 'Client' },
+      { key: 'name', label: 'Client', render: (r) => UI.maskName(r.name) },
       { key: 'channel', label: 'Channel' },
       { key: 'method_category_primary', label: 'Primary method' },
       { key: 'country', label: 'Country' },
@@ -238,7 +238,7 @@
     const el = document.getElementById('safety-table');
     UI.renderSimpleTable(el, [
       { key: 'type', label: 'Type', render: (r) => UI.escapeHtml((r.type || '').replace(/_/g, ' ')) },
-      { key: 'phone', label: 'Phone' },
+      { key: 'phone', label: 'Phone', render: (r) => UI.maskPhone(r.phone) },
       { key: 'source', label: 'Source' },
       { key: 'at', label: 'When', render: (r) => UI.formatDate(r.at) },
       { key: 'report', label: 'Summary', render: (r) => UI.escapeHtml((r.report || '').slice(0, 80)) },
@@ -255,10 +255,21 @@
     alert('Acknowledged safety incident: ' + id);
   };
 
-  window.alertProvider = function(phone) {
-    const msg = prompt('Enter alert message for provider regarding client ' + phone + ':', 'Please follow up with client ' + phone + ' regarding reported side effects.');
-    if (msg) {
-      alert('Alert notification sent.');
+  window.alertProvider = async function(phone) {
+    const masked = UI.maskPhone(phone);
+    const msg = prompt('Enter alert message for provider regarding client ' + masked + ':', 'Please follow up with client ' + masked + ' regarding reported side effects.');
+    if (!msg) return;
+    try {
+      const res = await fetch(`/api/admin/clients/${encodeURIComponent(phone)}/alert_provider`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to send alert');
+      alert('Alert notification sent to provider successfully.');
+    } catch (e) {
+      alert('Could not send alert: ' + e.message);
     }
   };
 
@@ -343,8 +354,55 @@
 
   window.loadStats = loadStats;
 
+  window.toggleRecipientSelect = function() {
+    const type = document.getElementById('broadcast-recipient-type')?.value;
+    const group = document.getElementById('broadcast-recipient-id-group');
+    if (group) {
+      group.style.display = type === 'provider' ? 'block' : 'none';
+    }
+  };
+
   document.addEventListener('DOMContentLoaded', () => {
     resolveInitialSection();
     connectRealtime();
+    const bForm = document.getElementById('broadcast-form');
+    if (bForm) {
+      bForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const type = document.getElementById('broadcast-recipient-type').value;
+        const recipientId = document.getElementById('broadcast-recipient-id').value.trim();
+        const title = document.getElementById('broadcast-title').value.trim();
+        const message = document.getElementById('broadcast-message').value.trim();
+        
+        if (type === 'provider' && !recipientId) {
+            return alert('Please specify a Provider ID / Email.');
+        }
+        
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true; btn.textContent = 'Sending...';
+        
+        try {
+            const res = await fetch('/api/admin/notifications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    recipient_type: type,
+                    recipient_id: recipientId,
+                    title,
+                    message
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Failed to broadcast');
+            alert('Notification sent successfully!');
+            bForm.reset();
+            window.toggleRecipientSelect();
+        } catch (err) {
+            alert('Could not send notification: ' + err.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Send Notification';
+        }
+      });
+    }
   });
 })();

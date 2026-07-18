@@ -375,7 +375,7 @@ body.sidebar-open .sidebar-overlay {
 }
 
 .data-table tbody tr:hover {
-  background: #f8fafc;
+  background: var(--hover-bg);
 }
 
 .data-table .row-clickable {

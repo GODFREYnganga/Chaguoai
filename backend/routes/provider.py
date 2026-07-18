@@ -838,3 +838,58 @@ def api_provider_triage_result(job_id):
     payload = {"success": True, **result}
     payload["method_cards_count"] = len(method_cards or [])
     return jsonify(payload)
+
+
+def api_provider_notifications():
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    db, db_error = require_db()
+    if db_error:
+        return db_error
+    
+    notes = []
+    try:
+        from firebase_admin import firestore
+        for doc in db.collection("notifications").where(filter=firestore.FieldFilter("recipient_type", "==", "all")).stream():
+            n = serialize_firestore_value(doc.to_dict())
+            n["id"] = doc.id
+            notes.append(n)
+        for doc in db.collection("notifications").where(filter=firestore.FieldFilter("recipient_id", "==", pid)).stream():
+            n = serialize_firestore_value(doc.to_dict())
+            n["id"] = doc.id
+            notes.append(n)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+        
+    unique_notes = {n["id"]: n for n in notes}
+    result = list(unique_notes.values())
+    result.sort(key=lambda x: x.get("created_at") or 0, reverse=True)
+    return jsonify({"notifications": result})
+
+
+def api_provider_mark_notification_read(notification_id):
+    pid = session.get("provider_id")
+    if not pid:
+        return jsonify({"error": "Unauthorized"}), 401
+    db, db_error = require_db()
+    if db_error:
+        return db_error
+    
+    try:
+        from firebase_admin import firestore
+        doc_ref = db.collection("notifications").document(notification_id)
+        snap = doc_ref.get()
+        if snap.exists:
+            data = snap.to_dict() or {}
+            if data.get("recipient_type") == "all":
+                p_ref = db.collection("providers").document(pid)
+                p_ref.update({
+                    "read_notifications": firestore.ArrayUnion([notification_id])
+                })
+            else:
+                doc_ref.update({"read": True})
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+

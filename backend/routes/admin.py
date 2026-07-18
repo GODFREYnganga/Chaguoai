@@ -127,3 +127,64 @@ def admin_approve_provider(provider_id):
         return db_error
     db.collection("providers").document(provider_id).update({"status": "approved"})
     return jsonify({"success": True})
+
+
+def api_admin_send_notification():
+    denied = require_admin()
+    if denied:
+        return denied
+    db, db_error = require_db()
+    if db_error:
+        return db_error
+    
+    data = request.json or {}
+    recipient_type = data.get("recipient_type") or "all"
+    recipient_id = data.get("recipient_id") or ""
+    title = data.get("title") or "Program Alert"
+    message = data.get("message")
+    
+    if not message:
+        return jsonify({"error": "Message content is required"}), 400
+        
+    db.collection("notifications").document().set({
+        "recipient_type": recipient_type,
+        "recipient_id": recipient_id,
+        "title": title,
+        "message": message,
+        "created_at": time.time() * 1000,
+        "read": False
+    })
+    return jsonify({"success": True})
+
+
+def api_admin_alert_client_provider(phone):
+    denied = require_admin()
+    if denied:
+        return denied
+    db, db_error = require_db()
+    if db_error:
+        return db_error
+    
+    data = request.json or {}
+    message = data.get("message")
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
+        
+    client_snap = db.collection("contraceptive_users").document(phone).get()
+    if not client_snap.exists:
+        return jsonify({"error": "Client not found"}), 404
+    c_data = client_snap.to_dict() or {}
+    pid = c_data.get("assigned_provider_id")
+    if not pid:
+        return jsonify({"error": "No provider assigned to this client"}), 400
+        
+    db.collection("notifications").document().set({
+        "recipient_type": "provider",
+        "recipient_id": pid,
+        "title": f"Urgent: Side Effects Alert (Patient {phone})",
+        "message": message,
+        "created_at": time.time() * 1000,
+        "read": False
+    })
+    return jsonify({"success": True})
+

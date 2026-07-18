@@ -28,6 +28,7 @@
                 <div class="sidebar-nav-group">
                     <a href="#" class="nav-item active" onclick="showSection('dashboard')">Overview</a>
                     <a href="#" class="nav-item" onclick="showSection('approvals')">Provider approvals <span id="nav-pending-badge" class="nav-badge" style="display:none">0</span></a>
+                    <a href="#" class="nav-item" onclick="showSection('broadcasting')">Broadcasting & Alerts</a>
                 </div>
                 <div class="sidebar-nav-group-bottom" style="margin-top: auto; padding: 0 0.5rem;">
                     <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0; opacity: 0.2;">
@@ -147,6 +148,39 @@
                         </div>
                     </div>
                     <div id="completions-table"></div>
+                </div>
+            </section>
+
+            <section id="broadcasting" class="content-section" style="display: none;">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3 class="panel-title">Send Program Broadcast or Alert</h3>
+                            <p class="panel-subtitle">Post announcements or alert specific providers / cohorts of CHWs.</p>
+                        </div>
+                    </div>
+                    <form id="broadcast-form" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                        <div class="form-group">
+                            <label for="broadcast-recipient-type">Recipient Type</label>
+                            <select id="broadcast-recipient-type" class="input" style="width: 100%;" onchange="toggleRecipientSelect()">
+                                <option value="all">All CHWs (Broadcast)</option>
+                                <option value="provider">Specific Provider / CHW</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="broadcast-recipient-id-group" style="display: none;">
+                            <label for="broadcast-recipient-id">Provider ID / Email</label>
+                            <input type="text" id="broadcast-recipient-id" class="input" style="width: 100%;" placeholder="e.g. provider@clinic.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="broadcast-title">Notification Title</label>
+                            <input type="text" id="broadcast-title" class="input" style="width: 100%;" placeholder="e.g. Program Update: New Guidelines Available" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="broadcast-message">Message Content</label>
+                            <textarea id="broadcast-message" class="input" style="width: 100%; min-height: 120px;" placeholder="Type your notification message here..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="align-self: flex-start;">Send Notification</button>
+                    </form>
                 </div>
             </section>
 

@@ -171,6 +171,42 @@
       </div>`;
   }
 
+  function maskPhone(phone) {
+    if (!phone) return '—';
+    let clean = String(phone).replace('whatsapp:', '').trim();
+    if (clean.startsWith('+')) {
+      if (clean.length > 8) {
+        return clean.substring(0, 7) + ' *** ' + clean.substring(clean.length - 3);
+      }
+    } else if (clean.startsWith('0')) {
+      if (clean.length > 6) {
+        return clean.substring(0, 4) + ' *** ' + clean.substring(clean.length - 3);
+      }
+    }
+    if (clean.length > 5) {
+      return clean.substring(0, 2) + ' *** ' + clean.substring(clean.length - 2);
+    }
+    return clean;
+  }
+
+  function maskName(name) {
+    if (!name) return '—';
+    const s = String(name).trim();
+    if (s.startsWith('+') || (s.startsWith('0') && /^\d+$/.test(s.replace(/[\s\-]/g, '')))) {
+      return maskPhone(s);
+    }
+    if (s.toLowerCase() === 'friend') {
+      return '—';
+    }
+    const parts = s.split(/\s+/);
+    return parts.map(p => {
+      if (p.length > 2) {
+        return p[0] + '*'.repeat(p.length - 2) + p[p.length - 1];
+      }
+      return p[0] + '*';
+    }).join(' ');
+  }
+
   function statusPill(status) {
     const s = String(status || '').toLowerCase();
     let cls = 'status-pill status-warn';
@@ -190,5 +226,7 @@
     renderTrendChart,
     renderSimpleTable,
     statusPill,
+    maskPhone,
+    maskName,
   };
 })(window);

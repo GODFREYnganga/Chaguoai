@@ -86,12 +86,29 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="password">Password <span class="required-mark">*</span></label>
-                                <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password" placeholder="Minimum 8 characters">
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password" placeholder="Minimum 8 characters" style="padding-right: 2.5rem; width: 100%;">
+                                    <button type="button" class="password-toggle" onclick="togglePasswordVisibility('password')" style="position: absolute; right: 0.75rem; background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; color: var(--text-muted);">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    </button>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label for="passwordConfirm">Confirm password <span class="required-mark">*</span></label>
-                                <input type="password" id="passwordConfirm" name="passwordConfirm" required minlength="8" autocomplete="new-password" placeholder="Re-enter password">
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <input type="password" id="passwordConfirm" name="passwordConfirm" required minlength="8" autocomplete="new-password" placeholder="Re-enter password" style="padding-right: 2.5rem; width: 100%;">
+                                    <button type="button" class="password-toggle" onclick="togglePasswordVisibility('passwordConfirm')" style="position: absolute; right: 0.75rem; background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; color: var(--text-muted);">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    </button>
+                                </div>
                             </div>
+                        </div>
+                        <div id="password-requirements" style="margin-top: 0.75rem; font-size: 0.8rem; background: var(--bg-color); border: 1px solid var(--border); padding: 0.75rem; border-radius: 8px; color: var(--text-main);">
+                            <div style="font-weight: 600; margin-bottom: 0.4rem;">Password requirements:</div>
+                            <div id="req-length" class="req-item" style="display: flex; align-items: center; gap: 0.4rem; color: var(--text-muted);"><span class="bullet" style="display:inline-block; width:6px; height:6px; background:var(--text-muted); border-radius:50%;"></span> At least 8 characters</div>
+                            <div id="req-upper" class="req-item" style="display: flex; align-items: center; gap: 0.4rem; color: var(--text-muted);"><span class="bullet" style="display:inline-block; width:6px; height:6px; background:var(--text-muted); border-radius:50%;"></span> At least 1 uppercase letter</div>
+                            <div id="req-number" class="req-item" style="display: flex; align-items: center; gap: 0.4rem; color: var(--text-muted);"><span class="bullet" style="display:inline-block; width:6px; height:6px; background:var(--text-muted); border-radius:50%;"></span> At least 1 number</div>
+                            <div id="req-special" class="req-item" style="display: flex; align-items: center; gap: 0.4rem; color: var(--text-muted);"><span class="bullet" style="display:inline-block; width:6px; height:6px; background:var(--text-muted); border-radius:50%;"></span> At least 1 special character (e.g. @, #, $, %)</div>
                         </div>
                     </fieldset>
 
@@ -109,6 +126,38 @@
     </div>
 
     <script>
+        function togglePasswordVisibility(id) {
+            const input = document.getElementById(id);
+            const btn = input.nextElementSibling;
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+            } else {
+                input.type = 'password';
+                btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+            }
+        }
+
+        const passwordInput = document.getElementById('password');
+        passwordInput.addEventListener('input', () => {
+            const val = passwordInput.value;
+            updateReqItem('req-length', val.length >= 8);
+            updateReqItem('req-upper', /[A-Z]/.test(val));
+            updateReqItem('req-number', /[0-9]/.test(val));
+            updateReqItem('req-special', /[^A-Za-z0-9]/.test(val));
+        });
+
+        function updateReqItem(id, isValid) {
+            const el = document.getElementById(id);
+            if (isValid) {
+                el.style.color = '#10b981';
+                el.querySelector('.bullet').style.backgroundColor = '#10b981';
+            } else {
+                el.style.color = '';
+                el.querySelector('.bullet').style.backgroundColor = '';
+            }
+        }
+
         const form = document.getElementById('provider-register-form');
         const alertBox = document.getElementById('alert-box');
         const submitBtn = document.getElementById('submit-btn');
@@ -137,8 +186,13 @@
                 showAlert('Please select your role (CHW or Clinician).', 'error');
                 return;
             }
-            if (password.length < 8) {
-                showAlert('Password must be at least 8 characters.', 'error');
+            const hasLength = password.length >= 8;
+            const hasUpper = /[A-Z]/.test(password);
+            const hasNumber = /[0-9]/.test(password);
+            const hasSpecial = /[^A-Za-z0-9]/.test(password);
+
+            if (!hasLength || !hasUpper || !hasNumber || !hasSpecial) {
+                showAlert('Please make sure your password meets all safety requirements.', 'error');
                 return;
             }
             if (password !== passwordConfirm) {

@@ -295,6 +295,16 @@
                 </div>
             </section>
 
+            <section id="view-notifications" class="content-section" style="display: none;">
+                <div class="card" style="max-width: 800px; margin: 0 auto;">
+                    <h3>Notifications & System Alerts</h3>
+                    <p class="muted">Check messages from the programme manager and system triggers.</p>
+                    <div id="provider-notifications-list" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                        <p class="empty-state">No notifications yet.</p>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -463,6 +473,7 @@
                 setupSidebar();
                 showSection(currentProvider.role === 'chw' ? 'chw-roster' : 'clinician-mec');
                 loadRoster();
+                loadNotificationsCount();
             } catch (e) { window.location.href = '/provider/login'; }
         }
 
@@ -484,6 +495,10 @@
                         <a href="#" class="nav-item" onclick="showSection('chw-followups')">Follow-ups</a>
                         <a href="#" class="nav-item" onclick="showSection('chw-side-effects')">Side Effects</a>
                         <a href="#" class="nav-item" onclick="showSection('chw-qa')">General Q&A</a>
+                        <a href="#" class="nav-item" onclick="showSection('notifications')" style="display:flex;justify-content:space-between;align-items:center;">
+                            Notifications
+                            <span id="nav-notifications-badge" class="nav-badge" style="display:none;background:var(--danger);color:#fff;border-radius:50%;font-size:0.75rem;padding:0.15rem 0.4rem;font-weight:600;">0</span>
+                        </a>
                     </div>
                     ${logoutHtml}
                 `;
@@ -492,6 +507,10 @@
                     <div class="sidebar-nav-group" style="width: 100%;">
                         <a href="#" class="nav-item active" onclick="showSection('clinician-mec')">MEC Analyzer</a>
                         <a href="#" class="nav-item" onclick="showSection('clinician-review')">Clinician Review</a>
+                        <a href="#" class="nav-item" onclick="showSection('notifications')" style="display:flex;justify-content:space-between;align-items:center;">
+                            Notifications
+                            <span id="nav-notifications-badge" class="nav-badge" style="display:none;background:var(--danger);color:#fff;border-radius:50%;font-size:0.75rem;padding:0.15rem 0.4rem;font-weight:600;">0</span>
+                        </a>
                     </div>
                     ${logoutHtml}
                 `;
@@ -506,6 +525,7 @@
             'chw-qa': 'Clinical Q&A',
             'clinician-mec': 'MEC Analyzer',
             'clinician-review': 'Clinician Review',
+            'notifications': 'Notifications & Alerts',
         };
 
         function toggleSidebar() {
@@ -526,6 +546,7 @@
             if (sectionId === 'chw-followups' && typeof loadFollowups === 'function') loadFollowups();
             if (sectionId === 'chw-side-effects' && typeof loadSideEffects === 'function') loadSideEffects();
             if (sectionId === 'chw-roster' && typeof loadRoster === 'function') loadRoster();
+            if (sectionId === 'notifications' && typeof loadNotifications === 'function') loadNotifications();
         }
 
         function setLang(lang) {
@@ -562,17 +583,240 @@
                 const opts = q.options[selectedLang] || q.options['en'];
                 opts.forEach(o => { const opt = document.createElement('option'); opt.value = o; opt.textContent = o; sel.appendChild(opt); });
                 container.appendChild(sel);
+                if (triageData[q.id]) sel.value = triageData[q.id];
+            } else if (q.id === 'phone') {
+                const wrap = document.createElement('div');
+                wrap.style.display = 'flex';
+                wrap.style.gap = '0.5rem';
+                wrap.style.width = '100%';
+
+                const countryCodeSelect = document.createElement('div');
+                countryCodeSelect.id = 'triage-phone-code';
+                countryCodeSelect.className = 'custom-select-wrapper';
+                countryCodeSelect.style.position = 'relative';
+                countryCodeSelect.style.width = '150px';
+                
+                const prefixOptions = [
+                    { value: '+213', label: 'Algeria (+213)' },
+                    { value: '+244', label: 'Angola (+244)' },
+                    { value: '+61', label: 'Australia (+61)' },
+                    { value: '+880', label: 'Bangladesh (+880)' },
+                    { value: '+229', label: 'Benin (+229)' },
+                    { value: '+267', label: 'Botswana (+267)' },
+                    { value: '+55', label: 'Brazil (+55)' },
+                    { value: '+226', label: 'Burkina Faso (+226)' },
+                    { value: '+257', label: 'Burundi (+257)' },
+                    { value: '+238', label: 'Cabo Verde (+238)' },
+                    { value: '+237', label: 'Cameroon (+237)' },
+                    { value: '+236', label: 'Central African Republic (+236)' },
+                    { value: '+235', label: 'Chad (+235)' },
+                    { value: '+86', label: 'China (+86)' },
+                    { value: '+269', label: 'Comoros (+269)' },
+                    { value: '+242', label: 'Congo - Brazzaville (+242)' },
+                    { value: '+243', label: 'Congo - Kinshasa (+243)' },
+                    { value: '+225', label: "Cote d'Ivoire (+225)" },
+                    { value: '+253', label: 'Djibouti (+253)' },
+                    { value: '+20', label: 'Egypt (+20)' },
+                    { value: '+240', label: 'Equatorial Guinea (+240)' },
+                    { value: '+291', label: 'Eritrea (+291)' },
+                    { value: '+268', label: 'Eswatini (+268)' },
+                    { value: '+251', label: 'Ethiopia (+251)' },
+                    { value: '+33', label: 'France (+33)' },
+                    { value: '+241', label: 'Gabon (+241)' },
+                    { value: '+220', label: 'Gambia (+220)' },
+                    { value: '+49', label: 'Germany (+49)' },
+                    { value: '+233', label: 'Ghana (+233)' },
+                    { value: '+224', label: 'Guinea (+224)' },
+                    { value: '+245', label: 'Guinea-Bissau (+245)' },
+                    { value: '+91', label: 'India (+91)' },
+                    { value: '+62', label: 'Indonesia (+62)' },
+                    { value: '+81', label: 'Japan (+81)' },
+                    { value: '+254', label: 'Kenya (+254)' },
+                    { value: '+266', label: 'Lesotho (+266)' },
+                    { value: '+231', label: 'Liberia (+231)' },
+                    { value: '+218', label: 'Libya (+218)' },
+                    { value: '+261', label: 'Madagascar (+261)' },
+                    { value: '+265', label: 'Malawi (+265)' },
+                    { value: '+223', label: 'Mali (+223)' },
+                    { value: '+222', label: 'Mauritania (+222)' },
+                    { value: '+230', label: 'Mauritius (+230)' },
+                    { value: '+52', label: 'Mexico (+52)' },
+                    { value: '+212', label: 'Morocco (+212)' },
+                    { value: '+258', label: 'Mozambique (+258)' },
+                    { value: '+264', label: 'Namibia (+264)' },
+                    { value: '+227', label: 'Niger (+227)' },
+                    { value: '+234', label: 'Nigeria (+234)' },
+                    { value: '+92', label: 'Pakistan (+92)' },
+                    { value: '+250', label: 'Rwanda (+250)' },
+                    { value: '+239', label: 'Sao Tome & Principe (+239)' },
+                    { value: '+966', label: 'Saudi Arabia (+966)' },
+                    { value: '+221', label: 'Senegal (+221)' },
+                    { value: '+248', label: 'Seychelles (+248)' },
+                    { value: '+232', label: 'Sierra Leone (+232)' },
+                    { value: '+252', label: 'Somalia (+252)' },
+                    { value: '+27', label: 'South Africa (+27)' },
+                    { value: '+211', label: 'South Sudan (+211)' },
+                    { value: '+249', label: 'Sudan (+249)' },
+                    { value: '+255', label: 'Tanzania (+255)' },
+                    { value: '+228', label: 'Togo (+228)' },
+                    { value: '+216', label: 'Tunisia (+216)' },
+                    { value: '+256', label: 'Uganda (+256)' },
+                    { value: '+971', label: 'UAE (+971)' },
+                    { value: '+44', label: 'United Kingdom (+44)' },
+                    { value: '+1', label: 'USA / Canada (+1)' },
+                    { value: '+260', label: 'Zambia (+260)' },
+                    { value: '+263', label: 'Zimbabwe (+263)' },
+                    { value: '', label: 'Other/No Code' }
+                ];
+
+                let selectedValue = '+254';
+
+                countryCodeSelect.innerHTML = `
+                    <div class="custom-select-trigger input" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; height: 38px; box-sizing: border-box;">
+                        <span class="custom-select-label">Kenya (+254)</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 4px; flex-shrink: 0;"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <div class="custom-select-dropdown" style="position: absolute; top: 100%; left: 0; width: 240px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-md); display: none; flex-direction: column; z-index: 9999; margin-top: 4px;">
+                        <div style="padding: 0.5rem; border-bottom: 1px solid var(--border);">
+                            <input type="text" class="custom-select-search input" placeholder="Search country..." style="width: 100%; padding: 0.25rem 0.5rem; font-size: 0.85rem; box-sizing: border-box; height: 32px;">
+                        </div>
+                        <div class="custom-select-options" style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column;">
+                        </div>
+                    </div>
+                `;
+
+                const trigger = countryCodeSelect.querySelector('.custom-select-trigger');
+                const dropdown = countryCodeSelect.querySelector('.custom-select-dropdown');
+                const searchInput = countryCodeSelect.querySelector('.custom-select-search');
+                const optionsContainer = countryCodeSelect.querySelector('.custom-select-options');
+
+                function renderOptions(filterText = '') {
+                    optionsContainer.innerHTML = '';
+                    const filtered = prefixOptions.filter(opt => 
+                        opt.label.toLowerCase().includes(filterText.toLowerCase())
+                    );
+                    if (!filtered.length) {
+                        optionsContainer.innerHTML = '<div style="padding: 0.5rem; color: var(--text-muted); font-size: 0.85rem; text-align: center;">No matches</div>';
+                        return;
+                    }
+                    filtered.forEach(opt => {
+                        const optEl = document.createElement('div');
+                        optEl.style.padding = '0.5rem 0.75rem';
+                        optEl.style.cursor = 'pointer';
+                        optEl.style.fontSize = '0.9rem';
+                        optEl.style.color = 'var(--text-main)';
+                        optEl.style.transition = 'background 0.2s';
+                        if (opt.value === selectedValue) {
+                            optEl.style.background = 'var(--hover-bg)';
+                            optEl.style.fontWeight = '600';
+                        }
+                        optEl.onmouseenter = () => optEl.style.background = 'var(--hover-bg)';
+                        optEl.onmouseleave = () => {
+                            if (opt.value !== selectedValue) optEl.style.background = 'transparent';
+                        };
+                        optEl.onclick = () => {
+                            countryCodeSelect.value = opt.value;
+                            dropdown.style.display = 'none';
+                        };
+                        optEl.textContent = opt.label;
+                        optionsContainer.appendChild(optEl);
+                    });
+                }
+
+                Object.defineProperty(countryCodeSelect, 'value', {
+                    get: () => selectedValue,
+                    set: (val) => {
+                        selectedValue = val;
+                        const found = prefixOptions.find(o => o.value === val);
+                        countryCodeSelect.querySelector('.custom-select-label').textContent = found ? found.label : 'Select...';
+                        renderOptions();
+                    }
+                });
+
+                trigger.onclick = (e) => {
+                    e.stopPropagation();
+                    const isVisible = dropdown.style.display === 'flex';
+                    document.querySelectorAll('.custom-select-dropdown').forEach(d => d.style.display = 'none');
+                    if (!isVisible) {
+                        dropdown.style.display = 'flex';
+                        searchInput.value = '';
+                        renderOptions();
+                        setTimeout(() => searchInput.focus(), 50);
+                    } else {
+                        dropdown.style.display = 'none';
+                    }
+                };
+
+                searchInput.onclick = (e) => e.stopPropagation();
+                searchInput.oninput = (e) => {
+                    renderOptions(e.target.value);
+                };
+
+                document.addEventListener('click', () => {
+                    dropdown.style.display = 'none';
+                });
+
+                const inp = document.createElement('input');
+                inp.id = 'triage-input';
+                inp.className = 'input';
+                inp.type = 'tel';
+                inp.style.flex = '1';
+                inp.placeholder = 'e.g. 712345678';
+                inp.maxLength = 12;
+                inp.oninput = (e) => {
+                    e.target.value = e.target.value.replace(/\D/g, '').slice(0, 12);
+                };
+                
+                wrap.appendChild(countryCodeSelect);
+                wrap.appendChild(inp);
+                container.appendChild(wrap);
+
+                if (triageData.phone) {
+                    let matched = false;
+                    for (let optData of prefixOptions) {
+                        if (optData.value && triageData.phone.startsWith(optData.value)) {
+                            countryCodeSelect.value = optData.value;
+                            inp.value = triageData.phone.substring(optData.value.length);
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) {
+                        countryCodeSelect.value = '';
+                        inp.value = triageData.phone;
+                    }
+                }
             } else {
                 const inp = document.createElement('input');
                 inp.id = 'triage-input'; inp.className = 'input'; inp.type = q.type; inp.style.width = '100%'; inp.placeholder = '...';
                 container.appendChild(inp);
+                if (triageData[q.id]) inp.value = triageData[q.id];
             }
-            if (triageData[q.id]) document.getElementById('triage-input').value = triageData[q.id];
         }
 
         function nextTriageStep() {
             const q = triageQuestions[triageStep];
-            const val = document.getElementById('triage-input').value;
+            let val;
+            if (q.id === 'phone') {
+                const code = document.getElementById('triage-phone-code').value;
+                let rawNum = document.getElementById('triage-input').value.trim();
+                if (code && rawNum.startsWith('0')) {
+                    rawNum = rawNum.substring(1);
+                }
+                val = code + rawNum;
+                const checkNum = rawNum.replace(/[\s\-\(\)]/g, '');
+                if (!checkNum || !/^\d+$/.test(checkNum)) {
+                    return alert("Please enter a valid phone number containing digits.");
+                }
+                if (code && checkNum.length < 8) {
+                    return alert("The phone number is too short.");
+                }
+                if (checkNum.length > 12) {
+                    return alert("The phone number is too long (maximum 12 digits).");
+                }
+            } else {
+                val = document.getElementById('triage-input').value;
+            }
             if (!val) return alert("Required field");
             triageData[q.id] = val;
             if (q.id === 'country') {
@@ -888,6 +1132,16 @@
             `;
         }
 
+        function renderWorkflowSteps(activeStep) {
+            return `
+            <div class="workflow-steps" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;font-size:0.8rem;">
+                <span class="status-pill ${activeStep === 1 ? 'status-ok' : ''}" style="${activeStep !== 1 ? 'opacity:0.65;' : ''}">1. Review cards</span>
+                <span class="status-pill ${activeStep === 2 ? 'status-ok' : ''}" style="${activeStep !== 2 ? 'opacity:0.65;' : ''}">2. Counsel client</span>
+                <span class="status-pill ${activeStep === 3 ? 'status-ok' : ''}" style="${activeStep !== 3 ? 'opacity:0.65;' : ''}">3. Confirm choice</span>
+                <span class="status-pill ${activeStep === 4 ? 'status-ok' : ''}" style="${activeStep !== 4 ? 'opacity:0.65;' : ''}">4. Send instructions</span>
+            </div>`;
+        }
+
         function renderTriageResult(data) {
             window.lastFhirData = data.fhir_view;
             currentClientPhone = triageData.phone || currentClientPhone || '';
@@ -898,16 +1152,11 @@
             const packetHtml = window.ProviderRecommendations?.renderPacket(data.recommendation_packet) || '';
             const statusHint = cardCount
                 ? `<p class="muted" style="font-size:0.85rem;">${cardCount} method option(s) ready — use the buttons on each card.</p>`
-                : `<p style="font-size:0.85rem;padding:0.75rem;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;">No structured cards in this job yet. If you only see yellow MEC text, restart <strong>worker.py</strong> and submit a new match.</p>`;
+                : `<p style="font-size:0.85rem;padding:0.75rem;background:var(--bg-color);border:1px solid var(--border);border-radius:8px;color:var(--text-main);">AI matching completed. Review the detailed MEC safety profile details below.</p>`;
 
             document.getElementById('triage-final-result').innerHTML = `
                 <div style="padding: 1.5rem;">
-                    <div class="workflow-steps" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;font-size:0.8rem;">
-                        <span class="status-pill status-ok">1. Review cards</span>
-                        <span class="status-pill">2. Counsel client</span>
-                        <span class="status-pill">3. Confirm client choice or refer</span>
-                        <span class="status-pill">4. Send instructions</span>
-                    </div>
+                    ${renderWorkflowSteps(1)}
                     ${packetHtml}
                     <h3 style="margin-bottom: 0.5rem; color: var(--text);">Top Recommendations</h3>
                     ${statusHint}
@@ -915,10 +1164,10 @@
                         ${parseClinicalOutcome(rawRec, displayCards || [], data.mec_result || '')}
                     </div>
                     
-                    <div style="margin-top: 1.5rem; padding: 1rem; background: #fffaf0; border: 1px solid #feebc8; border-radius: 8px;">
-                        <h5 style="margin:0; font-size:0.75rem; color:#9c4221; text-transform:uppercase;">MEC Clinical Safety Verification</h5>
+                    <div class="alert alert-warning" style="margin-top: 1.5rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface);">
+                        <h5 style="margin:0; font-size:0.75rem; color:var(--text-main); text-transform:uppercase;">MEC Clinical Safety Verification</h5>
                         <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem;" onclick="toggleMecVerification(this)">Read MEC verification</button>
-                        <pre class="mec-verification" style="display:none; font-size: 0.75rem; margin: 0.5rem 0 0 0; color: #7b341e; white-space:pre-wrap; max-height:260px; overflow:auto;">${escapeHtml(data.mec_result || 'Verified against Kenya FP Guidelines')}</pre>
+                        <pre class="mec-verification" style="display:none; font-size: 0.75rem; margin: 0.5rem 0 0 0; color: var(--text-main); white-space:pre-wrap; max-height:260px; overflow:auto;">${escapeHtml(data.mec_result || 'Verified against Kenya FP Guidelines')}</pre>
                     </div>
 
                     <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
@@ -1102,8 +1351,8 @@
                 tr.onclick = () => openClientDrawer(c.id);
                 const registered = c.registered_at ? new Date(c.registered_at).toLocaleDateString() : '—';
                 tr.innerHTML = `
-                    <td data-label="Client"><strong>${UI.escapeHtml(c.name || 'Anonymous')}</strong></td>
-                    <td data-label="Phone" class="mono">${UI.escapeHtml(c.id)}</td>
+                    <td data-label="Client"><strong>${UI.escapeHtml(UI.maskName(c.name || 'Anonymous'))}</strong></td>
+                    <td data-label="Phone" class="mono">${UI.escapeHtml(UI.maskPhone(c.id))}</td>
                     <td data-label="Registered">${registered}</td>
                     <td data-label="Method">${UI.escapeHtml(c.method_category_primary || c.method_snippet || '—')}</td>
                     <td data-label="Status">${UI.statusPill(c.match_status || 'in_progress')}</td>`;
@@ -1123,8 +1372,8 @@
                 if (!res.ok) throw new Error(data.error || 'Failed to load');
                 const c = data.client;
                 currentClientPhone = c.phone || phone;
-                document.getElementById('drawer-name').textContent = c.name || 'Client';
-                document.getElementById('drawer-phone').textContent = c.phone || phone;
+                document.getElementById('drawer-name').textContent = UI.maskName(c.name || 'Client');
+                document.getElementById('drawer-phone').textContent = UI.maskPhone(c.phone || phone);
                 const loc = [c.country, c.admin_area].filter(Boolean).join(', ');
                 const packetHtml = window.ProviderRecommendations?.renderPacket(data.recommendation_packet) || '';
                 const careHtml = window.ProviderClients?.renderCarePlan(data.recommendation_packet?.care_plan_status || {}) || '';
@@ -1132,7 +1381,9 @@
                 const referralsHtml = window.ProviderClients?.renderReferrals(data.referrals || []) || '';
                 const auditHtml = window.ProviderClients?.renderAuditTrail(data.audit_trail || []) || '';
                 const displayCards = data.recommendation_packet?.recommended_methods || data.method_cards || [];
+                const activeStep = c.selected_method ? 4 : (displayCards.length ? 2 : 1);
                 body.innerHTML = `
+                    ${renderWorkflowSteps(activeStep)}
                     <p>${UI.statusPill(c.match_status)} <span class="muted">${UI.escapeHtml(c.channel || '')}</span></p>
                     ${loc ? `<p class="muted" style="font-size:0.85rem;">${UI.escapeHtml(loc)}</p>` : ''}
                     ${c.selected_method ? `<div class="alert alert-success" style="margin:0.75rem 0;">Client chose: <strong>${UI.escapeHtml(c.selected_method)}</strong><br><button class="btn btn-secondary btn-sm" onclick="sendSelectionMessage('${UI.escapeHtml(c.selected_method)}')">Send instructions again</button></div>` : ''}
@@ -1172,17 +1423,16 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed');
                 UI.renderSimpleTable(el, [
-                    { key: 'phone', label: 'Client' },
+                    { key: 'phone', label: 'Client', render: (r) => UI.maskPhone(r.phone) },
                     { key: 'at', label: 'When', render: (r) => UI.formatDate(r.at) },
                     { key: 'report', label: 'Report', render: (r) => UI.escapeHtml((r.report || '').slice(0, 200)) },
+                    { key: 'action', label: 'Action', render: (r) => `
+                        <div style="display: flex; gap: 0.5rem;" onclick="event.stopPropagation()">
+                            <button class="btn btn-secondary btn-sm" onclick="openClientDrawer('${UI.escapeHtml(r.phone)}')">Open Client</button>
+                            <button class="btn btn-primary btn-sm" onclick="openFollowupComposeForClient('${UI.escapeHtml(r.phone)}', '${UI.escapeHtml(r.client_name || "")}', '${UI.escapeHtml(r.client_method || "")}')">Follow up</button>
+                        </div>
+                    `},
                 ], data.reports || [], { emptyMessage: 'No side effect reports from your clients.', tableClass: 'table-no-cards' });
-                el.querySelectorAll('tbody tr').forEach((row, i) => {
-                    const r = (data.reports || [])[i];
-                    if (r && r.phone) {
-                        row.classList.add('row-clickable');
-                        row.onclick = () => openClientDrawer(r.phone);
-                    }
-                });
             } catch (e) {
                 UI.showError(el, e.message);
             }
@@ -1304,13 +1554,21 @@
             }
         }
 
+        const sanitizeGreeting = (name) => {
+            const clean = (name || '').trim();
+            if (!clean || clean.startsWith('+') || clean.startsWith('0') || clean.toLowerCase() === 'friend') {
+                return 'Habari,';
+            }
+            return `Habari ${clean},`;
+        };
+
         const followupTemplates = {
             checkin: (name, method) =>
-                `Habari ${name || 'friend'},\n\nThis is your ChaguoAI follow-up for ${method || 'your contraceptive method'}. How are you feeling? Reply with any question or concern.`,
+                `${sanitizeGreeting(name)}\n\nThis is your ChaguoAI follow-up for ${method || 'your contraceptive method'}. How are you feeling? Reply with any question or concern.`,
             side_effects: (name, method) =>
-                `Habari ${name || 'friend'},\n\nQuick check on ${method || 'your method'}: have you had bleeding changes, headache, nausea, or mood changes? Reply YES/NO or describe what you feel.`,
+                `${sanitizeGreeting(name)}\n\nQuick check on ${method || 'your method'}: have you had bleeding changes, headache, nausea, or mood changes? Reply YES/NO or describe what you feel.`,
             missed: (name, method) =>
-                `Habari ${name || 'friend'},\n\nReminder about ${method || 'your method'}: if you missed a dose or appointment, reply here and your CHW will guide you.`,
+                `${sanitizeGreeting(name)}\n\nReminder about ${method || 'your method'}: if you missed a dose or appointment, reply here and your CHW will guide you.`,
         };
 
         function applyFollowupTemplate() {
@@ -1377,8 +1635,8 @@
                 const groups = window.ProviderFollowups?.groupByClient(tasks) || [];
                 listEl.innerHTML = window.ProviderFollowups?.renderClientRows(groups) || '<p class="empty-state">No follow-up clients yet.</p>';
                 UI.renderSimpleTable(tableEl, [
-                    { key: 'client_name', label: 'Client' },
-                    { key: 'phone', label: 'Phone' },
+                    { key: 'client_name', label: 'Client', render: (r) => UI.maskName(r.client_name) },
+                    { key: 'phone', label: 'Phone', render: (r) => UI.maskPhone(r.phone) },
                     { key: 'method', label: 'Method' },
                     { key: 'due_at', label: 'Due', render: (r) => UI.formatDate(r.due_at) },
                     { key: 'reason', label: 'Reason' },
@@ -1507,6 +1765,79 @@
             document.documentElement.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
             updateThemeToggleIcons();
+        }
+
+        async function loadNotificationsCount() {
+            try {
+                const res = await apiFetch('/api/provider/notifications');
+                if (!res.ok) return;
+                const data = await res.json();
+                const notes = data.notifications || [];
+                const readList = currentProvider.read_notifications || [];
+                const unreadCount = notes.filter(n => {
+                    if (n.recipient_type === 'all') {
+                        return !readList.includes(n.id);
+                    }
+                    return !n.read;
+                }).length;
+                
+                const badge = document.getElementById('nav-notifications-badge');
+                if (badge) {
+                    if (unreadCount > 0) {
+                        badge.textContent = unreadCount;
+                        badge.style.display = 'inline-block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            } catch (e) { console.error('Failed to load notification badge', e); }
+        }
+
+        async function loadNotifications() {
+            const listEl = document.getElementById('provider-notifications-list');
+            const UI = window.DashboardUI;
+            listEl.innerHTML = '<div class="text-center"><span class="spinner"></span> Loading alerts…</div>';
+            try {
+                const res = await apiFetch('/api/provider/notifications');
+                if (!res.ok) throw new Error('Could not load notifications');
+                const data = await res.json();
+                const notes = data.notifications || [];
+                if (!notes.length) {
+                    listEl.innerHTML = '<p class="empty-state">No notifications yet.</p>';
+                    return;
+                }
+                const readList = currentProvider.read_notifications || [];
+                listEl.innerHTML = notes.map(n => {
+                    const isRead = n.recipient_type === 'all' ? readList.includes(n.id) : n.read;
+                    return `
+                        <div class="card" style="padding: 1rem; border: 1px solid var(--border); background: var(--surface); display:flex; flex-direction:column; gap:0.5rem; ${isRead ? 'opacity: 0.75;' : 'border-left: 4px solid var(--primary);'}">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+                                <strong style="font-size: 0.95rem; color: var(--text-main);">${UI.escapeHtml(n.title)}</strong>
+                                <span class="muted" style="font-size:0.75rem;">${UI.formatDate(n.created_at)}</span>
+                            </div>
+                            <p style="margin:0; font-size:0.875rem; color:var(--text-main); line-height: 1.5;">${UI.escapeHtml(n.message)}</p>
+                            ${!isRead ? `<button class="btn btn-secondary btn-sm" style="align-self: flex-start; margin-top:0.25rem; font-size:0.75rem;" onclick="markNotificationRead('${UI.escapeHtml(n.id)}')">Mark as read</button>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                listEl.innerHTML = `<div class="error-state">${UI.escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function markNotificationRead(id) {
+            try {
+                const res = await apiFetch(`/api/provider/notifications/${encodeURIComponent(id)}/read`, {
+                    method: 'POST'
+                });
+                if (!res.ok) throw new Error('Could not mark read');
+                const meRes = await apiFetch('/api/provider/me');
+                if (meRes.ok) {
+                    currentProvider = await meRes.json();
+                }
+                loadNotificationsCount();
+                loadNotifications();
+            } catch (e) { alert(e.message); }
         }
 
         function updateThemeToggleIcons() {

@@ -26,6 +26,8 @@ def _build_views() -> dict:
         "admin_events": admin_routes.admin_events,
         "admin_pending_providers": admin_routes.admin_pending_providers,
         "admin_approve_provider": admin_routes.admin_approve_provider,
+        "api_admin_send_notification": admin_routes.api_admin_send_notification,
+        "api_admin_alert_client_provider": admin_routes.api_admin_alert_client_provider,
         "provider_dashboard": provider_routes.provider_dashboard,
         "provider_login": provider_routes.provider_login,
         "provider_register": provider_routes.provider_register,
@@ -54,6 +56,8 @@ def _build_views() -> dict:
         "api_provider_mec_query": provider_routes.api_provider_mec_query,
         "api_provider_submit_triage": provider_routes.api_provider_submit_triage,
         "api_provider_triage_result": provider_routes.api_provider_triage_result,
+        "api_provider_notifications": provider_routes.api_provider_notifications,
+        "api_provider_mark_notification_read": provider_routes.api_provider_mark_notification_read,
     }
 
 

@@ -52,6 +52,20 @@ def create_admin_blueprint(views):
         _view(views, "admin_approve_provider"),
         methods=["POST"],
     )
+    _add(
+        bp,
+        "/api/admin/notifications",
+        "api_admin_send_notification",
+        _view(views, "api_admin_send_notification"),
+        methods=["POST"],
+    )
+    _add(
+        bp,
+        "/api/admin/clients/<path:phone>/alert_provider",
+        "api_admin_alert_client_provider",
+        _view(views, "api_admin_alert_client_provider"),
+        methods=["POST"],
+    )
     return bp
 
 
@@ -97,7 +111,21 @@ def create_provider_blueprint(views):
     _add(bp, "/api/provider/followups/<task_id>/outcome", "api_provider_followup_outcome", _view(views, "api_provider_followup_outcome"), methods=["POST"])
     _add(bp, "/api/provider/mec_query", "api_provider_mec_query", _view(views, "api_provider_mec_query"), methods=["POST"])
     _add(bp, "/api/provider/submit_triage", "api_provider_submit_triage", _view(views, "api_provider_submit_triage"), methods=["POST"])
-    _add(bp, "/api/provider/triage_result/<job_id>", "api_provider_triage_result", _view(views, "api_provider_triage_result"), methods=["GET"])
+    _add(bp, "/api/provider/notifications", "api_provider_notifications", _view(views, "api_provider_notifications"), methods=["GET"])
+    _add(
+        bp,
+        "/api/provider/notifications/<notification_id>/read",
+        "api_provider_mark_notification_read",
+        _view(views, "api_provider_mark_notification_read"),
+        methods=["POST"],
+    )
+    _add(
+        bp,
+        "/api/provider/triage_result/<job_id>",
+        "api_provider_triage_result",
+        _view(views, "api_provider_triage_result"),
+        methods=["GET"],
+    )
     return bp
 
 
