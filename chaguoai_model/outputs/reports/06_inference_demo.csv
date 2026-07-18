@@ -1,0 +1,16 @@
+user_label,rank,method,adherence_pct,disc_pct,risk_level
+"Amina — 22yr, 1 child, Siaya, injections history",1,Injectables,90.1,9.9,low
+"Amina — 22yr, 1 child, Siaya, injections history",2,Pills,90.1,9.9,low
+"Amina — 22yr, 1 child, Siaya, injections history",3,BTL,0.0,100.0,high
+"Amina — 22yr, 1 child, Siaya, injections history",4,Implants,0.0,100.0,high
+"Amina — 22yr, 1 child, Siaya, injections history",5,Condoms,0.0,100.0,high
+"Amina — 22yr, 1 child, Siaya, injections history",6,IUCD,0.0,100.0,high
+"Beatrice — 35yr, 5 children, Busia, wants no more",1,Injectables,80.4,19.6,low
+"Beatrice — 35yr, 5 children, Busia, wants no more",2,BTL,0.0,100.0,high
+"Beatrice — 35yr, 5 children, Busia, wants no more",3,Implants,0.0,100.0,high
+"Beatrice — 35yr, 5 children, Busia, wants no more",4,Condoms,0.0,100.0,high
+"Beatrice — 35yr, 5 children, Busia, wants no more",5,IUCD,0.0,100.0,high
+"Cynthia — 18yr, 0 children, Siaya, wants child within 2yr",1,Condoms,25.1,74.9,high
+"Cynthia — 18yr, 0 children, Siaya, wants child within 2yr",2,Injectables,0.1,99.9,high
+"Cynthia — 18yr, 0 children, Siaya, wants child within 2yr",3,Pills,0.1,99.9,high
+"Cynthia — 18yr, 0 children, Siaya, wants child within 2yr",4,Implants,0.0,100.0,high

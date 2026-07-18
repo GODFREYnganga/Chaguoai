@@ -1,0 +1,24 @@
+feature,decision,reasoning
+age,KEEP,Corr with target: r=+0.07. Non-linear (older→more disc)
+noofchildren,KEEP,Corr with target: r=+0.05. Parity drives method choice
+education_ordinal,KEEP,Primary Incomplete has 48% disc vs 42.5% Secondary
+fertility_ordinal,KEEP,"Strongest predictor (No more→57%, Within2yr→34%)"
+fertility_intention_known,KEEP,Missing is informative (33% disc vs 42% overall)
+counseled_binary,KEEP,Captures programme engagement (selection bias noted)
+county,KEEP,Genuine geographic heterogeneity (+9.9pp Busia vs Siaya)
+delivery_type,KEEP,Captures outreach vs facility context
+year,KEEP,Programme phase: rate rose 36.7%→47.2% over 3 years
+previous_method_category,KEEP,Core clinical predictor: LARC 51% disc vs barrier 18%
+current_method_category,KEEP,Target component — also a strong predictor
+switch_type,KEEP,Captures directionality: upgrade/downgrade/lateral
+was_on_larc,KEEP,Binary flag for LARC continuation signal
+adopted_larc,KEEP,Binary: switching TO LARC (programme upgrade)
+is_young_woman,KEEP,Non-linear age effect for <20 group
+is_older_woman,KEEP,Non-linear age effect for 40+ group
+wants_child_soon,KEEP,Direct clinical signal for short-acting preference
+wants_no_more,KEEP,Direct clinical signal for permanent/LARC preference
+has_high_parity,KEEP,Parity≥5 clinically meaningful threshold
+education_known,KEEP,Missingness flag (Siaya geographic pattern)
+is_nulliparous,CONSIDER,Low n in revisit cohort; test feature importance
+counseled_known,DROP,97.8% known — near-zero variance flag; not useful
+month_num,CONSIDER,Weak seasonality seen; include and test importance

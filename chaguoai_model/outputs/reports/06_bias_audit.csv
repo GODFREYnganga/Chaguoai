@@ -1,0 +1,15 @@
+subgroup,auc,ap,recall,n,positive_rate,meets_min_auc
+Age: 10–17,0.9498,0.9458,0.8257,302,0.3609,True
+Age: 18–24,0.8942,0.8696,0.6989,2518,0.2875,True
+Age: 25–29,0.8815,0.8832,0.7071,2161,0.3697,True
+Age: 30–34,0.9111,0.9176,0.7366,1852,0.4017,True
+Age: 35–39,0.9135,0.9241,0.7515,1241,0.415,True
+Age: 40–49,0.9133,0.9388,0.7831,861,0.482,True
+Age: 50+,0.8992,0.9633,0.8723,70,0.6714,True
+Prev method: barrier,0.9718,0.9657,0.8824,960,0.301,True
+Prev method: long_acting_reversible,0.8539,0.8376,0.6282,7286,0.3164,True
+County: Busia,0.9026,0.9111,0.7485,5023,0.395,True
+County: Siaya,0.9005,0.8933,0.7137,3982,0.3438,True
+Fertility: Within 2 Years,0.8415,0.816,0.6156,2127,0.2948,True
+Fertility: Later than 2 years,0.9087,0.9079,0.7329,5706,0.3687,True
+Fertility: No more children,0.9451,0.9659,0.8585,1172,0.5307,True

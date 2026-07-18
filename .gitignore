@@ -19,6 +19,31 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Runtime/generated databases and indexes
+*.sqlite3
+*.db
+backend/knowledge_base/chroma_db/
+
+mhc-backend/
+mhc-knowledge/
+
+# Local-only competition drafts (not part of the open repo)
+docs/hash_submission/
+
+# ML raw data and generated artifacts
+chaguoai_model/data/raw/
+chaguoai_model/outputs/processed/
+chaguoai_model/outputs/models/
+chaguoai_model/outputs/figures/
+*.parquet
+*.pkl
+
+
+#
+# Local model/vector artifacts
+model_artifacts/
+vector_store/
+
 # Editor / IDEs
 .vscode/
 .idea/
@@ -35,6 +60,9 @@ Thumbs.db
 
 # Security / Credentials
 *.json
+!backend/data/geography_aliases.json
+!backend/knowledge_base/chunks/*.json
+!backend/knowledge_base/ingestion_manifest.json
 visara-480709-c663d17f1573.json
 credentials.json
 *firebase-adminsdk*.json

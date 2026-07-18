@@ -1,0 +1,4 @@
+column,n_imputed,strategy,imputed_value,reasoning
+fertilityintention,10314,Modal per dataset,Later than 2 years,Modal is neutral; missing-flag created to preserve signal
+educationlevel,8908,Modal per county,"{'Busia': 'Primary Complete', 'Siaya': 'Primary Complete'}",Geographic missingness pattern (Siaya 10% vs Busia 2%)
+counseled,677,Constant,Yes,97.8% Yes; program design ensures counseling is near-universal

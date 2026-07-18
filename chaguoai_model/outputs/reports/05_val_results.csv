@@ -1,0 +1,6 @@
+model,val_auc,val_ap,val_recall
+dummy_majority,0.5,0.5127,0.0
+logistic_regression,0.9599,0.9741,0.8892
+random_forest,0.9619,0.9753,0.8892
+xgboost,0.9638,0.9762,0.8893
+lightgbm,0.9639,0.9762,0.8894

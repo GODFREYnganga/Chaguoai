@@ -1,0 +1,75 @@
+
+HOW TO ADD DATA FROM A NEW COUNTY OR COUNTRY
+=============================================
+
+The model is designed to scale to new geographies without
+rewriting any code. Follow these steps:
+
+STEP 1 — Format your new CSV to match Client_Service_Statistics.csv
+  Required column names (can be renamed in config.py):
+    gender, fpstatus, age, noofchildren, educationlevel,
+    fertilityintention, previousmethod, methodadopted,
+    counseled, county, delivery, year, month
+
+  Required values for fpstatus:   'Revisit' (or equivalent)
+  Required values for gender:     'Female' (or equivalent)
+  Method names should match or be added to METHOD_CATEGORY_MAP in config.py
+
+STEP 2 — Run the full pipeline on new data
+  Set CHAGUOAI_DATA_DIR to your new data folder
+  Run Notebooks 01 → 04 (skip Notebook 02 Step 6 removal list
+  if your data has different method names)
+
+STEP 3 — Choose a retraining strategy
+
+  Option A: FULL RETRAIN (new geography only)
+    Train a fresh model on new-geography data only.
+    Best when: new geography is very different from Western Kenya.
+    Risk: loses all patterns learned from 78k+ Western Kenya records.
+
+  Option B: TRANSFER LEARNING (recommended)
+    Take the current best model. Fine-tune it on new data
+    by continuing training with a lower learning rate.
+    The dataset_source_enc feature automatically differentiates
+    geographies in the combined model.
+    Best when: new geography is broadly similar (East Africa, SSA).
+
+  Option C: COMBINED RETRAIN (most data-efficient)
+    Stack new CSV rows with original (after harmonizing column names).
+    Retrain from scratch on combined dataset.
+    The 'county' or new 'geography' column becomes a feature.
+    Best when: you have 5k+ new records from the new geography.
+
+STEP 4 — Re-evaluate disaggregated performance
+  Run Notebook 06 with the new test set.
+  Check that AUC >= 0.65 for all subgroups in the new geography.
+
+HOW TO RETRAIN WITH CHATBOT DATA
+=================================
+
+Every follow-up interaction at Day 14, Day 30, and Day 90
+where a user confirms their method status is a labeled data point.
+
+Log each interaction with this schema:
+  gender='Female', fpstatus='Revisit',
+  age=<from intake>, noofchildren=<from intake>,
+  educationlevel=<from intake>, fertilityintention=<from intake>,
+  previousmethod=<method at recommendation>, methodadopted=<confirmed>,
+  counseled='Yes', county=<from intake>, delivery='facility',
+  year=<current year>, month=<current month>
+
+When 500+ chatbot records accumulate → trigger Notebooks 02-06.
+The new model incorporates real-world ChaguoAI user behaviour.
+
+BIAS MONITORING IN PRODUCTION
+================================
+
+After deployment, monitor these metrics monthly:
+  1. Overall positive rate among scored users (should be ~40%)
+  2. AUC-ROC on any new labeled data (should be >=0.65)
+  3. Fraction of 'high risk' flags by age group
+     (should not systematically over-flag young women)
+  4. Method recommendation distribution
+     (should not always recommend LARC regardless of profile)
+
+If any metric drifts significantly, trigger retraining.
